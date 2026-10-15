@@ -24,6 +24,9 @@ export function IssueList({
       timeZone: "Asia/Shanghai",
     });
     return (
+      (!value("workload_role") ||
+        i.assignees.find((a) => a.login === i.workload_owner)?.membership ===
+          value("workload_role")) &&
       (!value("workload_owner") ||
         i.workload_owner === value("workload_owner")) &&
       (!value("repo") || i.repo === value("repo")) &&
@@ -125,6 +128,11 @@ export function IssueList({
           )
             .sort()
             .map((n) => [n, n] as [string, string]),
+        ])}
+        {select("workload_role", "归属人身份", [
+          ["", "全部"],
+          ["internal", "内部责任人"],
+          ["external", "外部开发者"],
         ])}
         {select("author", "创建者", [
           ["", "全部创建者"],

@@ -8,6 +8,7 @@ import { IssueList } from "./IssueList";
 import { Detail } from "./Detail";
 import { exportView } from "./export";
 import "./style.css";
+import { filterOwners } from "./owners";
 const cards: {
   key: keyof Stats;
   name: string;
@@ -90,6 +91,8 @@ function App() {
     );
   const all = Object.values(data.repositories).flatMap((r) => r.issues);
   const p = params();
+  const ownerRole = p.get("owner_role") || "";
+  const visibleOwners = filterOwners(data, ownerRole);
   const view = hash.split("?")[0];
   const selected = all.find((i) => i.id === p.get("id"));
   const repo = p.get("repo") || "";
@@ -367,7 +370,21 @@ function App() {
             </div>
             <section className="panel">
               <div className="toolbar">
-                <h2>责任人工作量</h2>
+                <h2>责任人名下 Issue 数量</h2>
+                <select
+                  aria-label="责任人类型"
+                  value={ownerRole}
+                  onChange={(e) => {
+                    e.target.value
+                      ? p.set("owner_role", e.target.value)
+                      : p.delete("owner_role");
+                    go(Object.fromEntries(p), "dashboard");
+                  }}
+                >
+                  <option value="">全部</option>
+                  <option value="internal">内部责任人</option>
+                  <option value="external">外部开发者</option>
+                </select>
                 <select
                   aria-label="责任人排序"
                   value={ownerSort}
@@ -382,10 +399,13 @@ function App() {
                 每条 Open Issue
                 仅计入首位内部责任人；无内部成员时计入首位责任人。顺序以 GitCode
                 Assignee 列表为准，人员合计等于 Open
-                总数。内部身份按所属仓库判断。
+                总数。内部身份按所属仓库判断；筛选后仅统计匹配身份的仓库 Issue。
               </p>
+              {!visibleOwners.length && (
+                <p className="empty">当前筛选下没有责任人</p>
+              )}
               <div className="owner-grid">
-                {[...data.owners]
+                {[...visibleOwners]
                   .sort(
                     (a, b) =>
                       Number(b.stats[ownerSort as keyof Stats]) -
@@ -395,7 +415,12 @@ function App() {
                     <button
                       key={o.person.login}
                       className="owner"
-                      onClick={() => go({ workload_owner: o.person.login })}
+                      onClick={() =>
+                        go({
+                          workload_owner: o.person.login,
+                          ...(ownerRole ? { workload_role: ownerRole } : {}),
+                        })
+                      }
                     >
                       <div className="owner-name">
                         {o.person.avatar ? (
@@ -423,7 +448,7 @@ function App() {
                       <div className="workbar">
                         <i
                           style={{
-                            width: `${(o.stats.open / Math.max(...data.owners.map((o) => o.stats.open), 1)) * 100}%`,
+                            width: `${(o.stats.open / Math.max(...visibleOwners.map((o) => o.stats.open), 1)) * 100}%`,
                           }}
                         />
                       </div>

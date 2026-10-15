@@ -112,7 +112,7 @@ test("workload cards label outsiders and drill down to unique ownership", async 
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "责任人工作量" }),
+    page.getByRole("heading", { name: "责任人名下 Issue 数量" }),
   ).toBeVisible();
   await expect(
     page.locator(".owner").filter({ hasText: "外部开发者" }).first(),
@@ -137,4 +137,30 @@ test("workload cards label outsiders and drill down to unique ownership", async 
   ).toBeVisible();
   await page.getByLabel("搜索标题 / 编号").fill("#125");
   await expect(page.locator("table.issues tbody tr")).toHaveCount(1);
+});
+
+test("owner role filtering persists and updates counts and drilldown", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const data = await (await page.request.get("/data/dashboard.json")).json();
+  for (const role of ["external", "internal"]) {
+    await page.getByLabel("责任人类型", { exact: true }).selectOption(role);
+    const expected = data.owners.filter((o: any) =>
+      Object.values(o.repo_roles).includes(role),
+    );
+    await expect(page.locator(".owner")).toHaveCount(expected.length);
+    const label = role === "external" ? "外部开发者" : "内部责任人";
+    await expect(page.locator(".owner .owner-name .tag").first()).toHaveText(
+      label,
+    );
+    await page.reload();
+    await expect(page.getByLabel("责任人类型", { exact: true })).toHaveValue(
+      role,
+    );
+  }
+  await page.locator(".owner").first().click();
+  await expect(page.getByLabel("归属人身份", { exact: true })).toHaveValue(
+    "internal",
+  );
 });

@@ -125,6 +125,13 @@ test("nested directories, slash branches, boundary matching and mobile layout", 
   await query.fill("runtime/v2");
   await expect(page.locator(".duty-results tbody tr")).toHaveCount(2);
   await expect(page.locator(".duty-results")).toContainText("包含的责任田");
+  await query.fill("runtime/v2/kernel/mem");
+  await expect(page.locator(".duty-results tbody tr")).toHaveCount(2);
+  await expect(page.locator(".duty-results")).toContainText("测试田主乙");
+  await expect(page.locator(".duty-results")).not.toContainText("测试田主甲");
+  await query.fill("runtime/v2/kernel/memory/new_file_not_in_index.cc");
+  await expect(page.locator(".duty-results")).toContainText("目录规则推断");
+  await expect(page.locator(".duty-results")).toContainText("测试田主乙");
   await query.fill(
     "https://github.com/cann/ge/blob/feature/new/runtime/v2/kernel/memory/allocator.cc",
   );

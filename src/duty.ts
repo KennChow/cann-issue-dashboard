@@ -16,7 +16,7 @@ export type DutyData = {
 export type DutyMatch = {
   path: string;
   fields: DutyField[];
-  kind: "明确归属" | "包含的责任田" | "模糊候选" | "拼写近似" | "兜底归属";
+  kind: "明确归属" | "包含的责任田" | "模糊候选" | "拼写近似" | "兜底归属" | "目录规则推断";
 };
 
 const inside = (path: string, prefix: string) =>
@@ -183,7 +183,7 @@ export function searchDuty(
     }
     const exact = ownersFor(data, query);
     // A bare filename is ambiguous even if it happens to exist at repository root.
-    if (query.includes("/") && (exact.length || index.includes(query))) {
+    if (query.includes("/") && index.includes(query)) {
       matches.set(query, {
         path: query,
         fields: exact,
@@ -243,7 +243,11 @@ export function searchDuty(
       }
     }
     if (!matches.size && query.includes("/")) {
-      matches.set(query, { path: query, fields: [], kind: "兜底归属" });
+      matches.set(query, {
+        path: query,
+        fields: exact,
+        kind: exact.length ? "目录规则推断" : "兜底归属",
+      });
     }
   }
   return [...matches.values()];

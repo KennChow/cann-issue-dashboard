@@ -164,3 +164,36 @@ test("owner role filtering persists and updates counts and drilldown", async ({
     "internal",
   );
 });
+test("unified internal directory shows provenance and exports HTML", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/#/members");
+  await expect(
+    page.getByRole("heading", { name: "内部责任人总表", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("搜索内部人员").fill("Chang-an-HW");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr")).toContainText("内部责任人");
+  await expect(page.locator("tbody tr")).toContainText("用户确认");
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出总表 HTML" }).click();
+  const download = await pending;
+  const path = testInfo.outputPath("directory.html");
+  await download.saveAs(path);
+  const fs = await import("node:fs/promises");
+  const html = await fs.readFile(path, "utf8");
+  expect(html).toContain("Chang-an-HW");
+  expect(html).toContain("成员来源仓库");
+  await page.goto("/#/dashboard?owner_role=internal");
+  await expect(
+    page
+      .locator(".owner")
+      .filter({ has: page.locator("strong", { hasText: "Chang-an-HW" }) }),
+  ).toHaveCount(1);
+  await page.goto("/#/dashboard?owner_role=external");
+  await expect(
+    page
+      .locator(".owner")
+      .filter({ has: page.locator("strong", { hasText: "Chang-an-HW" }) }),
+  ).toHaveCount(0);
+});

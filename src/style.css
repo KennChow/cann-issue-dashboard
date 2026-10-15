@@ -629,3 +629,21 @@ footer {
   flex-wrap: wrap;
   margin-left: auto;
 }
+
+@media (max-width: 700px) {
+  header {
+    height: auto;
+    min-height: 70px;
+    flex-wrap: wrap;
+    padding-top: 12px;
+    padding-bottom: 8px;
+  }
+  header nav {
+    gap: 14px;
+    min-height: 38px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    flex-shrink: 0;
+  }
+}

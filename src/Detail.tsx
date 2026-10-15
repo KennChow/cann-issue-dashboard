@@ -88,11 +88,11 @@ export function Detail({
           <dt>内部责任归属</dt>
           <dd>
             {i.internal_assignment === "assigned"
-              ? "已分配仓库成员"
+              ? "已分配内部责任人"
               : i.internal_assignment === "missing"
                 ? "未分配内部责任人"
                 : "无法确认"}
-            。内部指当前仓库成员（含生态开发者），不代表公司雇员身份；多人负责时有一位成员即视为已落实。
+            。内部依据四仓成员并集及人工确认补充名单，跨仓统一认定；多人负责时有一位内部人员即视为已落实。
           </dd>
           <dt>创建时间</dt>
           <dd>{fmt(i.created_at)}</dd>

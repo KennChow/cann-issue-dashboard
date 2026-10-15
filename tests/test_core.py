@@ -107,7 +107,7 @@ class PersistenceTests(unittest.TestCase):
                 self.assertEqual(sync.run(SimpleNamespace(repo=None,full=True),Failed()),1)
             after=json.loads((root/'public/data/dashboard.json').read_text())
             self.assertEqual(after['repositories']['cann/ge']['issues'][0]['title'],oldi['title'])
-            self.assertEqual(after['last_success'],NOW.isoformat());self.assertFalse(after['complete']);self.assertEqual(len(after['errors']),2)
+            self.assertEqual(after['last_success'],NOW.isoformat());self.assertFalse(after['complete']);self.assertEqual(len(after['errors']),3)
     def test_nonpublic_data_rejected(self):
         with self.assertRaises(SyncError):normalize('cann/ge',raw(visibility_reason='private'))
 
@@ -195,6 +195,30 @@ class WorkloadTests(unittest.TestCase):
         a=issue(assignees=[{'login':'a'}]);a['assignees'][0]['membership']='internal'
         b=issue(assignees=[{'login':'a'}]);b['repo']='cann/metadef';b['assignees'][0]['membership']='external'
         groups=owners([a,b,issue()]);self.assertEqual(sum(g['stats']['open'] for g in groups),3);self.assertEqual(groups[0]['role'],'mixed')
+
+class DirectoryTests(unittest.TestCase):
+    def test_union_deduplicates_and_classifies_across_repositories(self):
+        from collector.membership import collect_directory, apply_directory
+        class Fake:
+            def pages(self,path):return [{'login':'Chang-an-HW','id':1}] if path.startswith('cann/ge/') else [{'login':'chang-an-hw','id':1}] if path.startswith('cann/metadef/') else []
+        directory=collect_directory(Fake(),['cann/ge','cann/metadef','cann/tensorflow'],[],{},NOW)
+        self.assertEqual(len(directory['people']),1);self.assertEqual(len(directory['people'][0]['repos']),2)
+        i=issue(assignees=[{'login':'outsider'},{'login':'Chang-an-HW'}]);i['repo']='cann/tensorflow';apply_directory(i,directory)
+        self.assertEqual(i['workload_owner'],'Chang-an-HW');self.assertEqual(i['internal_assignment'],'assigned')
+    def test_explicit_confirmation_and_partial_failure(self):
+        from collector.membership import collect_directory, apply_directory
+        class Fake:
+            def pages(self,path):raise SyncError('HTTP 503')
+        d=collect_directory(Fake(),['cann/ge'],[{'login':'confirmed','reason':'verified'}],{},NOW)
+        self.assertFalse(d['complete'])
+        i=issue(assignees=[{'login':'confirmed'}]);apply_directory(i,d);self.assertEqual(i['internal_assignment'],'assigned')
+        i=issue(assignees=[{'login':'other'}]);apply_directory(i,d);self.assertEqual(i['assignees'][0]['membership'],'unknown')
+    def test_failed_source_preserved_but_not_treated_as_fresh_evidence(self):
+        from collector.membership import collect_directory
+        class Fake:
+            def pages(self,path):raise SyncError('HTTP 503')
+        d=collect_directory(Fake(),['cann/ge'],[],{'sources':{'cann/ge':{'members':[{'login':'old','avatar':''}],'last_success':NOW.isoformat()}}},NOW)
+        self.assertEqual(d['people'][0]['stale_repos'],['cann/ge']);self.assertFalse(d['people'][0]['confirmed'])
 
 if __name__ == '__main__':
     unittest.main()

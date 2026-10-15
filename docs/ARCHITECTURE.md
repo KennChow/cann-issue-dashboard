@@ -57,3 +57,7 @@ index.ndjson 当前为单文件，变更后需下载该轻量索引全量；并�
 ## 批量评论优化
 
 依据[官方仓库评论接口文档](https://docs.gitcode.com/docs/apis/get-api-v-5-repos-owner-repo-issues-comments/)，实测 ge `/issues/comments` 返回 total_count=1428，分页可获取全部仓库 Issue 评论。全量且超过 20 条 Issue 时优先批量查询，按 target.issue.id 与 number 双重核对归属，只保留公共 Issue 的评论；评论数量不吻合或批量接口失败时退回逐条接口与缓存。增量扫描继续复用未变评论，不重复下载全仓评论。
+
+## 内部责任人统一身份（最新口径）
+
+`collector/membership.py` 每轮采集四仓成员，按 login.casefold 去重，结合 `config/internal_people.json` 的明确确认依据形成 `internal_directory`。所有仓库的 Assignee 身份、内部责任人标签和首位内部归属最终统一由该总表计算。`internal_directory.sources` 只保留 login/avatar/角色等必要字段，不保留邮箱；people 包含当前来源 repos、失败来源 stale_repos、人工依据及 confirmed。成员身份不足时不会断言外部，回复判定仍独立使用 Issue 所属仓库角色。此前逐仓内部/外部区分规则已由此口径替代。

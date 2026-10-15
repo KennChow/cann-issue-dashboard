@@ -11,6 +11,7 @@ from .api import Client, SyncError
 from .model import normalize, comments, reply, status, stats, owners, date, user, internal_assignment, workload_owner
 from .reports import index_reports
 from .history import history, activity
+from .membership import collect_directory, apply_directory
 ROOT = Path(__file__).resolve().parents[1]
 
 def read(path, default):
@@ -22,7 +23,7 @@ def atomic(path, value):
     temp.write_text(json.dumps(value, ensure_ascii=False, separators=(',', ':')) + '\n')
     os.replace(temp, path)
 
-def collect_repo(client, repo, old, config, now, full=False, cache_dir=None):
+def collect_repo(client, repo, old, config, now, full=False, cache_dir=None, membership_source=None):
     old_rows = {i['id']: i for i in old.get('issues', [])}
     full = full or not old.get('last_full') or now - date(old['last_full']) >= timedelta(days=config['full_interval_days'])
     params = {'state': 'all', 'sort': 'updated', 'direction': 'asc'}
@@ -51,7 +52,9 @@ def collect_repo(client, repo, old, config, now, full=False, cache_dir=None):
     members = set(config['maintainers'].get(repo, []))
     member_complete = repo in config['maintainers_complete']
     try:
-        membership = client.pages(repo + '/collaborators')
+        if membership_source is not None and membership_source['error']:
+            raise SyncError(membership_source['error'])
+        membership = membership_source['members'] if membership_source is not None else client.pages(repo + '/collaborators')
         assignment_members = {user(m)['login'] for m in membership if user(m)['login']}
         assignment_members_complete = True
         members.update(user(m)['login'] for m in membership if int(m.get('access_level') or 0) >= 15 or m.get('permission') in ('admin', 'write'))
@@ -147,12 +150,16 @@ def run(args, client=None):
     previous = read(dest, {})
     repositories = copy.deepcopy(previous.get('repositories', {}))
     errors = []
+    directory = collect_directory(client, config['repos'], read(ROOT / 'config/internal_people.json', []), previous.get('internal_directory', {}), now)
+    for repo, source in directory['sources'].items():
+        if source['error']:
+            errors.append(repo + ' 成员名单: ' + source['error'])
     for repo in config['repos']:
         if args.repo and args.repo != repo:
             continue
         old = repositories.get(repo, {})
         try:
-            repositories[repo] = collect_repo(client, repo, old, config, now, args.full, ROOT / ".cache/comments")
+            repositories[repo] = collect_repo(client, repo, old, config, now, args.full, ROOT / ".cache/comments", directory["sources"][repo])
             print(repo, repositories[repo]['mode'], len(repositories[repo]['issues']), 'issues', flush=True)
         except (SyncError, ValueError, TypeError, KeyError) as exc:
             message = str(exc) if isinstance(exc, SyncError) else 'Malformed upstream data'
@@ -175,6 +182,7 @@ def run(args, client=None):
     issues = []
     for repo, record in repositories.items():
         for issue in record['issues']:
+            apply_directory(issue, directory)
             issue['reports'] = report_index.get(issue['id'], [])
             issue['metrics'] = status(issue, now)
         record['stats'] = stats(record['issues'])
@@ -182,7 +190,7 @@ def run(args, client=None):
     complete = all(repositories.get(r, {}).get('last_success') and not repositories[r].get('error') for r in config['repos'])
     result = {'schema_version': 1, 'generated_at': now.isoformat(),
               'last_success': min(repositories[r]['last_success'] for r in config['repos']) if complete else previous.get('last_success'),
-              'complete': complete, 'errors': errors, 'repositories': repositories,
+              'complete': complete, 'errors': errors, 'repositories': repositories, 'internal_directory': directory,
               'stats': stats(issues), 'owners': owners(issues), 'report_index': report_index, 'report_success': report_success,
               'snapshots': history(previous.get('snapshots', []), issues, now, config['snapshot_days'], complete and not args.repo),
               'activity': activity(issues), 'requests': client.requests}

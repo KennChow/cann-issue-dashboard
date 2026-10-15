@@ -56,6 +56,19 @@ export type Stats = {
   closure_rate: number | null;
 };
 export type Data = {
+  internal_directory?: {
+    checked_at: string;
+    complete: boolean;
+    people: {
+      login: string;
+      avatar: string;
+      repos: string[];
+      stale_repos: string[];
+      explicit_reason: string;
+      confirmed: boolean;
+    }[];
+    sources: Record<string, { last_success?: string; error: string | null }>;
+  };
   schema_version: number;
   generated_at: string;
   last_success: string | null;

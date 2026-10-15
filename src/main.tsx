@@ -7,6 +7,7 @@ import { IssueList } from "./IssueList";
 import { Detail } from "./Detail";
 import { exportView } from "./export";
 import "./style.css";
+import { InternalMembers } from "./InternalMembers";
 import { filterOwners } from "./owners";
 const cards: {
   key: keyof Stats;
@@ -123,10 +124,20 @@ function App() {
         </a>
         <nav>
           <a
-            className={!view.includes("issues") ? "active" : ""}
+            className={
+              !view.includes("issues") && !view.includes("members")
+                ? "active"
+                : ""
+            }
             href="#/dashboard"
           >
             运行总览
+          </a>
+          <a
+            href="#/members"
+            className={view.includes("members") ? "active" : ""}
+          >
+            内部责任人总表
           </a>
           <a
             className={view.includes("issues") ? "active" : ""}
@@ -144,9 +155,11 @@ function App() {
           <div>
             <p className="eyebrow">COMMUNITY OPERATIONS / 闭环监控</p>
             <h1>
-              {view.includes("issues")
-                ? "Issue 工作台"
-                : "让每一个问题得到回应"}
+              {view.includes("members")
+                ? "内部责任人总表"
+                : view.includes("issues")
+                  ? "Issue 工作台"
+                  : "让每一个问题得到回应"}
             </h1>
             <p className="muted">
               四仓公共 Issue · 责任归属 · 响应追踪 · 14 天闭环预警
@@ -157,10 +170,14 @@ function App() {
               <button
                 data-no-export
                 onClick={() =>
-                  exportView("大屏总览", "main", data.generated_at)
+                  exportView(
+                    view.includes("members") ? "内部责任人总表" : "大屏总览",
+                    "main",
+                    data.generated_at,
+                  )
                 }
               >
-                导出大屏 HTML
+                {view.includes("members") ? "导出总表 HTML" : "导出大屏 HTML"}
               </button>
             )}
             <button className="sync" onClick={() => go({ state: "all" })}>
@@ -194,7 +211,9 @@ function App() {
             )}
           </details>
         )}
-        {view.includes("issues") ? (
+        {view.includes("members") ? (
+          <InternalMembers data={data} />
+        ) : view.includes("issues") ? (
           <IssueList issues={all} hash={hash} at={data.generated_at} />
         ) : (
           <>
@@ -389,7 +408,7 @@ function App() {
                 每条 Open Issue
                 仅计入首位内部责任人；无内部成员时计入首位责任人。顺序以 GitCode
                 Assignee 列表为准，人员合计等于 Open
-                总数。内部身份按所属仓库判断；筛选后仅统计匹配身份的仓库 Issue。
+                总数。内部身份采用四仓成员并集及人工补充总表，跨仓统一认定。
               </p>
               {!visibleOwners.length && (
                 <p className="empty">当前筛选下没有责任人</p>

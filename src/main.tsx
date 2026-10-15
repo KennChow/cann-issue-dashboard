@@ -9,6 +9,7 @@ import { exportView } from "./export";
 import "./style.css";
 import { InternalMembers } from "./InternalMembers";
 import { filterOwners } from "./owners";
+import { Duty } from "./DutyView";
 const cards: {
   key: keyof Stats;
   name: string;
@@ -125,7 +126,7 @@ function App() {
         <nav>
           <a
             className={
-              !view.includes("issues") && !view.includes("members")
+              !view.includes("issues") && !view.includes("members") && !view.includes("duty")
                 ? "active"
                 : ""
             }
@@ -138,6 +139,9 @@ function App() {
             className={view.includes("members") ? "active" : ""}
           >
             内部责任人总表
+          </a>
+          <a href="#/duty" className={view.includes("duty") ? "active" : ""}>
+            GE 责任田
           </a>
           <a
             className={view.includes("issues") ? "active" : ""}
@@ -155,7 +159,7 @@ function App() {
           <div>
             <p className="eyebrow">COMMUNITY OPERATIONS / 闭环监控</p>
             <h1>
-              {view.includes("members")
+              {view.includes("duty") ? "GE 责任田查询" : view.includes("members")
                 ? "内部责任人总表"
                 : view.includes("issues")
                   ? "Issue 工作台"
@@ -166,7 +170,7 @@ function App() {
             </p>
           </div>
           <div>
-            {!view.includes("issues") && (
+            {!view.includes("issues") && !view.includes("duty") && (
               <button
                 data-no-export
                 onClick={() =>
@@ -211,7 +215,7 @@ function App() {
             )}
           </details>
         )}
-        {view.includes("members") ? (
+        {view.includes("duty") ? <Duty /> : view.includes("members") ? (
           <InternalMembers data={data} />
         ) : view.includes("issues") ? (
           <IssueList issues={all} hash={hash} at={data.generated_at} />

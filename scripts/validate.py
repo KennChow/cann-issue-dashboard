@@ -5,6 +5,9 @@ import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from collector.model import stats, status, date, owners
+for candidate in Path('public').rglob('*.json'):
+    payload = json.loads(candidate.read_text())
+    assert not (isinstance(payload, dict) and 'fields' in payload and 'repo_fallbacks' in payload), 'Private duty data must not be published'
 p=Path('public/data/dashboard.json')
 raw=p.read_text();data=json.loads(raw)
 assert data['schema_version']==1

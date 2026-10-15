@@ -84,6 +84,31 @@ npm run preview
 
 数据文件保留每个当前 Issue 一条记录及评论；规模随 Issue 总数增长。每日统计保留 365 天，每个 Issue 最近 100 条观测变更。报告索引保留实际报告历史；数量增长后建议将 Closed 详情按仓库分片，当前四仓规模采用单 JSON 以简化一致性。Git 历史会增长，可按年度归档维护。
 
+## GE 责任田查询
+
+导航“GE 责任田”（`#/duty`）提供完整分工表和路径查询。责任田人员数据仅保存在
+`KennChow/cann-radar-private` 的 `ge/duty.json`，不提交本仓库，也不复制到 `public/`、构建产物或 Actions artifact。
+公开网页只包含查询代码。进入页面后，可使用限定到该私有仓库、Contents 为 Read 的 GitHub fine-grained token 读取，
+或导入本地 JSON。凭证仅发送给 GitHub Contents API；凭证、查询和数据均不写入 URL、localStorage 或 sessionStorage，刷新后需要重新加载。
+读取失败不会退回公开数据地址。
+
+从 GE 工作区更新私有快照（脚本只写本地文件，不自动提交或推送）：
+
+```bash
+python3 scripts/sync_duty.py --ge-root /path/to/ge --private-checkout /path/to/cann-radar-private
+```
+
+脚本校验输出仓库的 origin，合并 `duty.json` 与 `git ls-files` 文件索引。随后在私有仓库中仅提交
+`ge/duty.json`。文件索引对应本次 GE 检出快照，远端分支的新增文件需重新同步；没有索引的原始 JSON 仍支持目录规则查询。
+
+查询支持 GitCode/GitHub GE 首页、blob/tree/raw 链接（含行号）、本地绝对/相对路径、名称片段、责任田或人员关键词和近似拼写。
+明确路径按目录边界与最长前缀匹配；同长冲突全部展示。目录查询列出下级责任田，模糊查询不截断候选。
+无显式归属的文件标记兜底；拼写近似不作为明确归属。链接仅解析路径，不抓取远端文件。
+责任田页面不提供通用 HTML 导出。
+
+仅更新网页时，可手动运行 **Deploy dashboard UI only** 工作流：复用现有公共 Issue 快照，
+执行校验、构建和浏览器测试后发布 Pages，不触发 Issue 扫描和邮件，也不读取任何私有责任田数据。
+
 ## 开源许可
 
 MIT。此仓库独立实现，未复制参考项目业务代码。上游 Issue 与报告内容版权归原作者；本仓库软件许可不改变其内容许可。

@@ -75,6 +75,10 @@ jobs:
       - name: Validate publication payload
         run: python scripts/validate.py
       - run: npm run build
+      - name: Prepare duty data from private source
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+        run: python scripts/publish_duty.py
       - name: Persist observations
         run: |
           git config user.name 'github-actions[bot]'

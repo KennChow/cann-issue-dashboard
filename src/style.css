@@ -630,15 +630,6 @@ footer {
   margin-left: auto;
 }
 
-.duty-access {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-.duty-access input { flex: 1; min-width: 180px; }
-.duty-import { display: block; margin: 20px 0; }
-.duty-import input { display: block; max-width: 100%; margin-top: 8px; }
 .duty-table code, .duty-view small { display: block; }
 .duty-view code { overflow-wrap: anywhere; white-space: normal; }
 .duty-search > input { display: block; width: 100%; margin-top: 10px; }

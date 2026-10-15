@@ -35,21 +35,22 @@ const fixture = {
   ],
 };
 
-test("private duty table, precise paths, multiple fuzzy candidates and clearing", async ({
+test.beforeEach(async ({ page }) => {
+  await page.route("**/data/duty.json", (route) =>
+    route.fulfill({ json: fixture }),
+  );
+});
+
+test("automatic duty table, precise paths and multiple fuzzy candidates", async ({
   page,
 }) => {
   await page.goto("/#/duty");
   await expect(
     page.getByRole("heading", { name: "GE 责任田查询" }),
   ).toBeVisible();
-  await expect(page.getByText("测试田主甲", { exact: true })).toHaveCount(0);
-  await page
-    .getByLabel("导入责任田 JSON")
-    .setInputFiles({
-      name: "fixture.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(JSON.stringify(fixture)),
-    });
+  await expect(
+    page.locator('input[type="password"], input[type="file"]'),
+  ).toHaveCount(0);
   await expect(page.locator(".duty-table tbody tr")).toHaveCount(2);
   const query = page.getByLabel("GE 仓库链接、文件路径或关键词");
   await query.fill(
@@ -78,35 +79,8 @@ test("private duty table, precise paths, multiple fuzzy candidates and clearing"
       () => JSON.stringify(localStorage) + JSON.stringify(sessionStorage),
     ),
   ).not.toContain("测试田主");
-  await page.getByRole("button", { name: "清除当前数据" }).click();
-  await expect(page.locator(".duty-table")).toHaveCount(0);
-});
-
-test("GitHub credential is sent only to the private API and is not retained", async ({
-  page,
-}) => {
-  await page.route(
-    "https://api.github.com/repos/KennChow/cann-radar-private/contents/ge/duty.json",
-    async (route) => {
-      expect(route.request().headers().authorization).toBe(
-        "Bearer synthetic-test-token",
-      );
-      await route.fulfill({ json: fixture });
-    },
-  );
-  await page.goto("/#/duty");
-  await page.getByLabel("GitHub 只读访问凭证").fill("synthetic-test-token");
-  await page.getByRole("button", { name: "读取私有分工表" }).click();
-  await expect(page.locator(".duty-table tbody tr")).toHaveCount(2);
-  expect(page.url()).not.toContain("synthetic-test-token");
-  expect(
-    await page.evaluate(
-      () => JSON.stringify(localStorage) + JSON.stringify(sessionStorage),
-    ),
-  ).not.toContain("synthetic-test-token");
   await page.reload();
-  await expect(page.getByLabel("GitHub 只读访问凭证")).toHaveValue("");
-  await expect(page.locator(".duty-table")).toHaveCount(0);
+  await expect(page.locator(".duty-table tbody tr")).toHaveCount(2);
 });
 
 test("nested directories, slash branches, boundary matching and mobile layout", async ({
@@ -114,13 +88,6 @@ test("nested directories, slash branches, boundary matching and mobile layout", 
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/#/duty");
-  await page
-    .getByLabel("导入责任田 JSON")
-    .setInputFiles({
-      name: "fixture.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(JSON.stringify(fixture)),
-    });
   const query = page.getByLabel("GE 仓库链接、文件路径或关键词");
   await query.fill("runtime/v2");
   await expect(page.locator(".duty-results tbody tr")).toHaveCount(2);
@@ -147,25 +114,20 @@ test("nested directories, slash branches, boundary matching and mobile layout", 
   ).toBe(true);
 });
 
-test("private authorization failure stays locked and malformed imports are rejected", async ({
+test("failed data load offers retry without requiring a credential or file", async ({
   page,
 }) => {
-  await page.route(
-    "https://api.github.com/repos/KennChow/cann-radar-private/contents/ge/duty.json",
-    (route) => route.fulfill({ status: 403, json: {} }),
+  await page.route("**/data/duty.json", (route) =>
+    route.fulfill({ status: 503, json: {} }),
   );
   await page.goto("/#/duty");
-  await page.getByLabel("GitHub 只读访问凭证").fill("synthetic-invalid-token");
-  await page.getByRole("button", { name: "读取私有分工表" }).click();
-  await expect(page.getByRole("alert")).toContainText("无权读取");
-  await expect(page.getByLabel("GitHub 只读访问凭证")).toHaveValue("");
-  await expect(page.locator(".duty-table")).toHaveCount(0);
-  await page
-    .getByLabel("导入责任田 JSON")
-    .setInputFiles({
-      name: "invalid.json",
-      mimeType: "application/json",
-      buffer: Buffer.from('{"fields":[null]}'),
-    });
-  await expect(page.getByRole("alert")).toContainText("文件无效");
+  await expect(page.getByRole("alert")).toContainText("责任田数据暂不可用");
+  await expect(
+    page.locator('input[type="password"], input[type="file"]'),
+  ).toHaveCount(0);
+  await page.route("**/data/duty.json", (route) =>
+    route.fulfill({ json: fixture }),
+  );
+  await page.getByRole("button", { name: "重新加载" }).click();
+  await expect(page.locator(".duty-table tbody tr")).toHaveCount(2);
 });

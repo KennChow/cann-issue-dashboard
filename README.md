@@ -86,11 +86,11 @@ npm run preview
 
 ## GE 责任田查询
 
-导航“GE 责任田”（`#/duty`）提供完整分工表和路径查询。责任田人员数据仅保存在
-`KennChow/cann-radar-private` 的 `ge/duty.json`，不提交本仓库，也不复制到 `public/`、构建产物或 Actions artifact。
-公开网页只包含查询代码。进入页面后，可使用限定到该私有仓库、Contents 为 Read 的 GitHub fine-grained token 读取，
-或导入本地 JSON。凭证仅发送给 GitHub Contents API；凭证、查询和数据均不写入 URL、localStorage 或 sessionStorage，刷新后需要重新加载。
-读取失败不会退回公开数据地址。
+导航“GE 责任田”（`#/duty`）自动展示完整分工表和路径查询，无需访客输入 Token 或导入文件。
+源配置保存在 `KennChow/cann-radar-private/ge/duty.json`，不提交公共仓库。
+部署工作流使用 Actions Secret `PRIVATE_REPO_PAT` 读取该文件，提取 GE 分工及文件索引，
+只写入已忽略的 `dist/data/duty.json`，随 Pages 产物发布。网页显示和查询的数据可公开访问。
+凭证仅在 CI 后台使用，不进入浏览器或发布产物。部署失败时保留上次已发布网站。
 
 从 GE 工作区更新私有快照（脚本只写本地文件，不自动提交或推送）：
 
@@ -107,7 +107,7 @@ python3 scripts/sync_duty.py --ge-root /path/to/ge --private-checkout /path/to/c
 责任田页面不提供通用 HTML 导出。
 
 仅更新网页时，可手动运行 **Deploy dashboard UI only** 工作流：复用现有公共 Issue 快照，
-执行校验、构建和浏览器测试后发布 Pages，不触发 Issue 扫描和邮件，也不读取任何私有责任田数据。
+执行校验、构建和浏览器测试后发布 Pages，不触发 Issue 扫描和邮件，只从私有源读取所需的责任田文件，不读取其他私有配置。
 
 ## 开源许可
 

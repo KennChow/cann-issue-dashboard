@@ -22,6 +22,10 @@ jobs:
       - run: npm test
       - run: python scripts/validate.py
       - run: npm run build
+      - name: Prepare duty data from private source
+        env:
+          PRIVATE_REPO_PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+        run: python scripts/publish_duty.py
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
       - uses: actions/upload-pages-artifact@v3

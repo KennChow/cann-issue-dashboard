@@ -1,9 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { dutyIndex, geFields, parseDuty, searchDuty } from "./duty";
 import type { DutyData, DutyField } from "./duty";
-
-const PRIVATE_FILE =
-  "https://api.github.com/repos/KennChow/cann-radar-private/contents/ge/duty.json";
 
 function People({ fields, data }: { fields: DutyField[]; data: DutyData }) {
   const people = fields.length
@@ -26,11 +23,9 @@ function People({ fields, data }: { fields: DutyField[]; data: DutyData }) {
 
 export function Duty() {
   const [data, setData] = useState<DutyData>();
-  const [token, setToken] = useState("");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [source, setSource] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const index = useMemo(() => (data ? dutyIndex(data) : []), [data]);
   const result = useMemo(() => {
     if (!data || !query.trim()) return { matches: [], error: "" };
@@ -41,123 +36,43 @@ export function Duty() {
     }
   }, [data, query, index]);
 
-  async function loadPrivate() {
-    setBusy(true);
+  useEffect(() => {
+    const controller = new AbortController();
     setError("");
-    const credential = token.trim();
-    setToken("");
-    try {
-      const response = await fetch(PRIVATE_FILE, {
-        headers: {
-          Authorization: `Bearer ${credential}`,
-          Accept: "application/vnd.github.raw+json",
-        },
-        cache: "no-store",
-        credentials: "omit",
-        redirect: "error",
-        referrerPolicy: "no-referrer",
+    fetch("./data/duty.json", { cache: "no-store", signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw Error("责任田数据暂不可用，请稍后重试。");
+        return response.json();
+      })
+      .then((value) => setData(parseDuty(value)))
+      .catch((error) => {
+        if (!controller.signal.aborted) setError(error.message);
       });
-      if (!response.ok) {
-        throw Error(
-          response.status === 404 ||
-            response.status === 403 ||
-            response.status === 401
-            ? "无权读取私有责任田文件，或文件尚未同步。请确认凭证有该仓库 Contents 只读权限。"
-            : `私有数据读取失败（HTTP ${response.status}）`,
-        );
-      }
-      setData(parseDuty(await response.json()));
-      setSource("私有仓库 · ge/duty.json");
-    } catch (e) {
-      setError(
-        e instanceof TypeError
-          ? "无法连接 GitHub，请检查网络后重试，或选择本地文件。"
-          : (e as Error).message,
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
+    return () => controller.abort();
+  }, [attempt]);
 
   return (
     <div className="duty-view">
       <section className="panel">
         <h2>GE 责任田分工表</h2>
         <p className="muted">
-          责任田数据保存在私有仓库。完成授权或导入后展示完整分工表，并可查询路径归属。
+          按模块查看目录分工，或在下方输入路径查找田主和 Committer。
         </p>
         {!data ? (
-          <>
-            <form
-              className="duty-access"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void loadPrivate();
-              }}
-            >
-              <label htmlFor="duty-token">GitHub 只读访问凭证</label>
-              <input
-                id="duty-token"
-                type="password"
-                autoComplete="off"
-                value={token}
-                placeholder="仅授权 cann-radar-private 的 Contents: Read"
-                onChange={(e) => setToken(e.target.value)}
-              />
-              <button type="submit" disabled={busy || !token.trim()}>
-                {busy ? "正在读取…" : "读取私有分工表"}
-              </button>
-            </form>
-            <p className="muted">
-              凭证仅发送给
-              GitHub，不保存。刷新页面后需重新授权，也可直接导入本地 JSON。
-            </p>
-            <label className="duty-import">
-              导入本地责任田 JSON
-              <input
-                type="file"
-                accept=".json,application/json"
-                aria-label="导入责任田 JSON"
-                disabled={busy}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setError("");
-                  try {
-                    setData(parseDuty(JSON.parse(await file.text())));
-                    setToken("");
-                    setSource("本地导入 · " + file.name);
-                  } catch {
-                    setError("文件无效：请选择符合责任田格式的 JSON 文件。");
-                  }
-                  e.target.value = "";
-                }}
-              />
-            </label>
-          </>
+          error ? (
+            <button onClick={() => setAttempt(attempt + 1)}>重新加载</button>
+          ) : (
+            <p role="status">正在加载责任田分工表…</p>
+          )
         ) : (
           <>
-            <div className="toolbar">
-              <p className="muted">
-                {source} · {geFields(data).length} 个责任田 ·{" "}
-                {data.files?.length || 0} 个索引文件
-              </p>
-              <button
-                onClick={() => {
-                  setData(undefined);
-                  setQuery("");
-                  setToken("");
-                  setSource("");
-                  setError("");
-                }}
-              >
-                清除当前数据
-              </button>
-            </div>
+            <p className="muted">
+              {geFields(data).length} 个责任田 · {data.files?.length || 0}{" "}
+              个索引文件
+            </p>
             {!data.files && (
               <p className="notice amber">
-                当前文件没有仓库文件索引：支持配置目录、完整路径和责任田搜索；同名文件搜索需要导入包含
-                files 的私有索引版本。
+                当前快照未包含文件索引，仅支持目录规则和责任田查询。
               </p>
             )}
             <div className="table-wrap">

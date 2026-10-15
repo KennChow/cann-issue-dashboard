@@ -2,15 +2,16 @@
 
 ## 技术选择
 
-### 私有责任田查询
+### 责任田查询
 
-`#/duty` 与 Issue 工作台共用导航，但数据独立加载。`DutyView.tsx` 从固定的 GitHub 私有 Contents API
-读取数据，或通过 File API 导入本地 JSON；`duty.ts` 校验结构、归一化路径并在浏览器内执行匹配。
-精确归属使用目录边界和最长前缀，模糊查询保留全部候选，配置冲突不擅自挑选单一责任人。
-文件索引由 `scripts/sync_duty.py` 在私有仓库生成，公开仓库仅包含通用代码及合成人员测试数据。
-GitHub fine-grained token 需要目标仓库 Contents 只读权限，不持久保存；刷新、退出页面或清除数据后需重新加载。
-不新增公开数据接口，不把私有数据混入 Issue 导出、采集任务、邮件或 Pages artifact。
-发布校验拒绝 `public/` 中包含责任田结构的 JSON。
+`#/duty` 与 Issue 工作台共用导航，从站点 `data/duty.json` 自动读取分工及文件索引。
+`duty.ts` 在浏览器内校验结构、归一化路径并执行匹配，查询无需上传。
+源配置只保存在私有仓库；两个部署工作流均在构建后调用 `scripts/publish_duty.py`，
+使用 Actions Secret `PRIVATE_REPO_PAT` 读取私有源，按字段白名单生成 `dist/data/duty.json`。
+该产物随网站公开发布，但不写入 `public/` 或 Git 历史；CI 凭证不进入产物。
+白名单仅包含 GE 模块、路径、田主与 committer 姓名、兜底规则和文件索引。
+`public/` 中仍禁止责任田结构的 JSON，避免把源数据意外提交到公共仓库。
+构建或取数失败不会覆盖现有部署。浏览器测试使用合成数据，无需私有仓库权限。
 
 React + TypeScript + Vite：静态构建和 Hash 路由，GitHub Pages 子路径兼容。Recharts：SVG 图表，浏览器可视化与独立 HTML 导出共用图形。原生 CSS：统一深色主题与响应式布局，无额外组件运行时。Python 标准库：认证、JSON、时间和网络无需额外依赖；单一模型产生所有统计。
 

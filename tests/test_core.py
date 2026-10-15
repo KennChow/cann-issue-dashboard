@@ -163,5 +163,23 @@ class BulkTests(unittest.TestCase):
         self.assertNotIn('private-content-must-not-be-published',json.dumps(result))
         self.assertEqual(len(result['issues']),21)
 
+class InternalAssignmentTests(unittest.TestCase):
+    def test_assignment_evidence_and_multiple_assignees(self):
+        from collector.model import internal_assignment
+        cases=[([],set(),False,'missing'),(['external'],{'member'},True,'missing'),(['external','Member'],{'member'},True,'assigned'),(['external'],set(),False,'unknown'),(['member'],{'member'},False,'assigned')]
+        for logins,members,complete,expected in cases:
+            i=issue(assignees=[{'login':l} for l in logins])
+            self.assertEqual(internal_assignment(i,members,complete),expected)
+    def test_independent_open_only_tag(self):
+        i=issue(assignees=[{'login':'author'}]);i['internal_assignment']='missing'
+        m=status(i,NOW);self.assertTrue(m['no_internal_assignee']);self.assertFalse(m['unassigned'])
+        i['state']='closed';self.assertFalse(status(i,NOW)['no_internal_assignee'])
+    def test_membership_change_recomputes_unchanged_issue(self):
+        oldi=issue(assignees=[{'login':'author'}]);oldi['internal_assignment']='assigned'
+        class Fake:
+            def pages(self,path,**params):return []
+        record=collect_repo(Fake(),'cann/ge',{'issues':[oldi],'last_full':NOW.isoformat(),'last_success':NOW.isoformat()},CONFIG,NOW)
+        self.assertEqual(record['issues'][0]['internal_assignment'],'missing')
+
 if __name__ == '__main__':
     unittest.main()

@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from .api import Client, SyncError
-from .model import normalize, comments, reply, status, stats, owners, date, user
+from .model import normalize, comments, reply, status, stats, owners, date, user, internal_assignment
 from .reports import index_reports
 from .history import history, activity
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,10 +46,14 @@ def collect_repo(client, repo, old, config, now, full=False, cache_dir=None):
     for identity in excluded:
         rows.pop(identity, None)
     warnings = []
+    assignment_members = set()
+    assignment_members_complete = False
     members = set(config['maintainers'].get(repo, []))
     member_complete = repo in config['maintainers_complete']
     try:
         membership = client.pages(repo + '/collaborators')
+        assignment_members = {user(m)['login'] for m in membership if user(m)['login']}
+        assignment_members_complete = True
         members.update(user(m)['login'] for m in membership if int(m.get('access_level') or 0) >= 15 or m.get('permission') in ('admin', 'write'))
         member_complete = True
     except SyncError as exc:
@@ -124,6 +128,7 @@ def collect_repo(client, repo, old, config, now, full=False, cache_dir=None):
         issue['events'] = events[-100:]
         rows[issue['id']] = issue
     for issue in rows.values():
+        issue['internal_assignment'] = internal_assignment(issue, assignment_members, assignment_members_complete)
         issue['reply_status'], issue['first_reply_at'] = reply(issue, members, member_complete, config['bots'])
     return {'issues': list(rows.values()), 'last_success': now.isoformat(), 'last_full': now.isoformat() if full else old['last_full'],
             'excluded_nonpublic': len(excluded), 'warnings': warnings, 'error': None, 'mode': 'full' if full else 'incremental'}

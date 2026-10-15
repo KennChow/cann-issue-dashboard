@@ -14,6 +14,12 @@ const cards: {
   color: string;
   filter: Record<string, string>;
 }[] = [
+  {
+    key: "no_internal_assignee",
+    name: "未分配内部责任人",
+    color: "amber",
+    filter: { internal: "missing" },
+  },
   { key: "open", name: "Open Issue", color: "blue", filter: { state: "open" } },
   {
     key: "unassigned",
@@ -111,6 +117,7 @@ function App() {
         (i.metrics.overdue ||
           i.metrics.due_soon ||
           i.metrics.unassigned ||
+          i.metrics.no_internal_assignee ||
           i.metrics.unreplied),
     )
     .sort((a, b) => b.metrics.age_hours - a.metrics.age_hours);
@@ -290,6 +297,7 @@ function App() {
                     <tr>
                       {[
                         "仓库",
+                        "未分配内部责任人",
                         "Open",
                         "未分配",
                         "未回复",
@@ -314,7 +322,7 @@ function App() {
                             {short(name)}
                           </button>
                         </td>
-                        {cards.slice(0, 6).map((c) => (
+                        {cards.slice(0, 7).map((c) => (
                           <td key={c.key}>
                             <button
                               className={`text ${c.color}`}

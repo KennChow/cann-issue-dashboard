@@ -36,6 +36,10 @@ export function IssueList({
         (value("assignment") === "yes"
           ? i.assignees.length > 0
           : i.assignees.length === 0)) &&
+      (!value("internal") ||
+        (value("internal") === "missing"
+          ? i.metrics.no_internal_assignee
+          : (i.internal_assignment || "unknown") === value("internal"))) &&
       (!value("reply") || i.reply_status === value("reply")) &&
       (!value("risk") ||
         (value("risk") === "overdue"
@@ -74,6 +78,7 @@ export function IssueList({
     <label>
       {label}
       <select
+        aria-label={label}
         value={value(key, key === "state" ? "open" : "")}
         onChange={(e) => set(key, e.target.value)}
       >
@@ -126,6 +131,12 @@ export function IssueList({
           ["", "全部"],
           ["yes", "已分配"],
           ["no", "未分配"],
+        ])}
+        {select("internal", "内部责任人", [
+          ["", "全部"],
+          ["missing", "未分配内部责任人"],
+          ["assigned", "已分配内部责任人"],
+          ["unknown", "无法确认"],
         ])}
         {select("reply", "维护者回复", [
           ["", "全部"],

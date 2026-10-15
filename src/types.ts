@@ -4,6 +4,7 @@ export type Metrics = {
   overdue_hours: number;
   remaining_hours: number;
   unassigned: boolean;
+  no_internal_assignee: boolean;
   unreplied: boolean;
   overdue: boolean;
   due_soon: boolean;
@@ -19,6 +20,7 @@ export type Issue = {
   author: Person;
   assignees: Person[];
   state: string;
+  internal_assignment?: "assigned" | "missing" | "unknown";
   reply_status: string;
   first_reply_at: string | null;
   created_at: string;
@@ -43,6 +45,7 @@ export type Stats = {
   open: number;
   closed: number;
   unassigned: number;
+  no_internal_assignee: number;
   unreplied: number;
   overdue: number;
   due_soon: number;

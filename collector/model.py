@@ -68,17 +68,28 @@ def reply(issue, members, members_complete, bots):
         return 'unreplied', None
     return 'unknown', None
 
+def internal_assignment(issue, members, complete):
+    """Internal means repository collaborator, not company employment."""
+    if not issue['assignees']:
+        return 'missing'
+    names = {name.casefold() for name in members}
+    if any(a['login'].casefold() in names for a in issue['assignees']):
+        return 'assigned'
+    return 'missing' if complete else 'unknown'
+
+
 def status(issue, now):
     age = max(0, (now - date(issue['created_at'])).total_seconds() / 3600)
     opened = issue['state'] == 'open'
     return dict(age_hours=round(age, 3), overdue_hours=round(max(0, age - 336), 3),
                 remaining_hours=round(336 - age, 3), unassigned=opened and not issue['assignees'],
+                no_internal_assignee=opened and issue.get('internal_assignment') == 'missing',
                 unreplied=opened and issue['reply_status'] == 'unreplied',
                 overdue=opened and age > 336, due_soon=opened and 264 < age <= 336,
                 has_report=bool(issue['reports']))
 
 def stats(issues):
-    result = {k: sum(bool(i['metrics'][k]) for i in issues) for k in ('unassigned', 'unreplied', 'overdue', 'due_soon', 'has_report')}
+    result = {k: sum(bool(i['metrics'][k]) for i in issues) for k in ('unassigned', 'no_internal_assignee', 'unreplied', 'overdue', 'due_soon', 'has_report')}
     result.update(open=sum(i['state'] == 'open' for i in issues), closed=sum(i['state'] == 'closed' for i in issues))
     result['unknown'] = sum(i['state'] == 'open' and i['reply_status'] == 'unknown' for i in issues)
     result['closure_rate'] = round(result['closed'] / len(issues) * 100, 2) if issues else None

@@ -79,3 +79,31 @@ test("exports dashboard, all filtered pages, and standalone issue details", asyn
   await page.goto("file://" + path);
   await expect(page.getByRole("heading", { name: "原始描述" })).toBeVisible();
 });
+test("internal assignee label drills down and is included in HTML export", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: /未分配内部责任人.*查看 Issue/ })
+    .click();
+  await expect(page.getByLabel("内部责任人", { exact: true })).toHaveValue(
+    "missing",
+  );
+  await expect(
+    page
+      .locator("table.issues tbody tr")
+      .first()
+      .getByText("未分配内部责任人", { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("内部责任人", { exact: true })).toHaveValue(
+    "missing",
+  );
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: /导出筛选结果/ }).click();
+  const download = await pending;
+  const path = testInfo.outputPath("internal.html");
+  await download.saveAs(path);
+  const fs = await import("node:fs/promises");
+  expect(await fs.readFile(path, "utf8")).toContain("未分配内部责任人");
+});

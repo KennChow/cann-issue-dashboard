@@ -1,0 +1,1257 @@
+{
+  "checked_at": "2026-10-15T03:54:58.663661+00:00",
+  "coverage": [
+    {
+      "repo": "cann/ge",
+      "members": 162,
+      "issues": 622
+    },
+    {
+      "repo": "cann/tensorflow",
+      "members": 83,
+      "issues": 44
+    },
+    {
+      "repo": "cann/metadef",
+      "members": 134,
+      "issues": 161
+    },
+    {
+      "repo": "cann/triton-inference-server-ge-backend",
+      "members": 84,
+      "issues": 63
+    }
+  ],
+  "assignments": [
+    {
+      "repo": "cann/ge",
+      "number": "658",
+      "title": "[Bug-Report|缺陷反馈]: ProfInnerStart 忽略 profiling 注册和设备列表错误仍返回成功",
+      "url": "https://gitcode.com/cann/ge/issues/658",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "657",
+      "title": "[Bug-Report|缺陷反馈]: JsonParser 对空 buffer 未返回参数错误而抛出未捕获异常",
+      "url": "https://gitcode.com/cann/ge/issues/657",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "650",
+      "title": "[Bug-Report|缺陷反馈]: 转置 GEMV 将非方阵的 GEMM M/K 维度转发错误",
+      "url": "https://gitcode.com/cann/ge/issues/650",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "640",
+      "title": "[Bug-Report|缺陷反馈]: GraphBuilder.set_graph_output 接受其他 builder 的 TensorHolder，原生调用指向错误所属图",
+      "url": "https://gitcode.com/cann/ge/issues/640",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "639",
+      "title": "[Bug-Report|缺陷反馈]: 无符号常量列表绕过标量范围检查，负值及越界值被 ctypes 静默回绕",
+      "url": "https://gitcode.com/cann/ge/issues/639",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "638",
+      "title": "[Bug-Report|缺陷反馈]: TensorDesc 超出 int64 范围的维度被 ctypes 静默截断",
+      "url": "https://gitcode.com/cann/ge/issues/638",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "637",
+      "title": "[Bug-Report|缺陷反馈]: 读取 LIST_DATA_TYPE 属性返回普通整数，无法作为 DataType 列表回写",
+      "url": "https://gitcode.com/cann/ge/issues/637",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "636",
+      "title": "[Bug-Report|缺陷反馈]: custom op 的 kernel 继承被无 execute 的已注册基类阻断，或越过非可调用遮蔽",
+      "url": "https://gitcode.com/cann/ge/issues/636",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "635",
+      "title": "[Bug-Report|缺陷反馈]: 子类新增 @pattern 方法时静默丢失基类已声明的融合 pattern",
+      "url": "https://gitcode.com/cann/ge/issues/635",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "634",
+      "title": "[Bug-Report|缺陷反馈]: 显式 DT_STRING 描述符拒绝匹配的 NumPy 字符串数组",
+      "url": "https://gitcode.com/cann/ge/issues/634",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "633",
+      "title": "[Bug-Report|缺陷反馈]: Python 属性列表的 DataType 枚举被错误写入 list_int",
+      "url": "https://gitcode.com/cann/ge/issues/633",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "632",
+      "title": "[Bug-Report|缺陷反馈]: LLM 字符串 Tensor 将 Unicode ndarray 按 ASCII 转成 bytes，中文和 emoji 构造失败",
+      "url": "https://gitcode.com/cann/ge/issues/632",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "631",
+      "title": "[Bug-Report|缺陷反馈]: LLM Tensor.numpy 的 FP16/BF16 特殊路径丢失 shape，FP16 copy=True 仍共享缓冲区",
+      "url": "https://gitcode.com/cann/ge/issues/631",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "630",
+      "title": "[Bug-Report|缺陷反馈]: TransferAsyncThread 的 worker 抛异常后 synchronize 将空结果当作成功",
+      "url": "https://gitcode.com/cann/ge/issues/630",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "629",
+      "title": "[Bug-Report|缺陷反馈]: 异步层传输读取普通 TransferConfig 不存在的 dst_layer_range，缓存键映射又用全局下标访问目标范围",
+      "url": "https://gitcode.com/cann/ge/issues/629",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "628",
+      "title": "[Bug-Report|缺陷反馈]: 替换 TransferWithCacheKeyConfig.cache_key 后目的 cluster 元数据仍指向旧集群",
+      "url": "https://gitcode.com/cann/ge/issues/628",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "627",
+      "title": "[Bug-Report|缺陷反馈]: TransferWithCacheKeyConfig 用源起点计算目标范围长度，拒绝等长错位范围并接受不等长范围",
+      "url": "https://gitcode.com/cann/ge/issues/627",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "626",
+      "title": "[Bug-Report|缺陷反馈]: CacheDesc 接受 tuple shape 后无法更新，list 更新后 batch_size 仍为旧值",
+      "url": "https://gitcode.com/cann/ge/issues/626",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "625",
+      "title": "[Bug-Report|缺陷反馈]: LlmConfig 再次生成 options 时保留已清除的旧配置",
+      "url": "https://gitcode.com/cann/ge/issues/625",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "624",
+      "title": "[Bug-Report|缺陷反馈]: Python 外部分配器的 MemoryError 穿出 ctypes 回调，C++ 收不到确定的空指针",
+      "url": "https://gitcode.com/cann/ge/issues/624",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "623",
+      "title": "[Bug-Report|缺陷反馈]: 空 Tensor 还原嵌套数据时外层零维导致除零异常",
+      "url": "https://gitcode.com/cann/ge/issues/623",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "622",
+      "title": "[Bug-Report|缺陷反馈]: Tensor 构造时未验证输入长度，shape 大于 data 时原生接口越界读取",
+      "url": "https://gitcode.com/cann/ge/issues/622",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "621",
+      "title": "[Bug-Report|缺陷反馈]: Tensor 的全 bool 输入无视声明 dtype，按 1 字节打包供多字节原生类型读取",
+      "url": "https://gitcode.com/cann/ge/issues/621",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "620",
+      "title": "[Bug-Report|缺陷反馈]: Python FP16 次正规数转换在下溢与正规数进位边界错误归零",
+      "url": "https://gitcode.com/cann/ge/issues/620",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "619",
+      "title": "[Bug-Report|缺陷反馈]: 多个插件目录下同名包被 sys.modules 复用，第二个插件静默漏加载",
+      "url": "https://gitcode.com/cann/ge/issues/619",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "618",
+      "title": "[Bug-Report|缺陷反馈]: 单文件 Python 插件无法导入同目录依赖，目录模式正常",
+      "url": "https://gitcode.com/cann/ge/issues/618",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "617",
+      "title": "[Documentation|文档反馈]: Python PatternMatcher Pass 指南的闭合围栏被渲染进调用代码",
+      "url": "https://gitcode.com/cann/ge/issues/617",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "616",
+      "title": "[Documentation|文档反馈]: DataFlow 与 ATC 完整 JSON 配置示例含尾逗号，复制后解析失败",
+      "url": "https://gitcode.com/cann/ge/issues/616",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "610",
+      "title": "[Bug-Report|缺陷反馈]: slog stub 按截断前长度扫描超长日志导致栈越界读",
+      "url": "https://gitcode.com/cann/ge/issues/610",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "609",
+      "title": "[Bug-Report|缺陷反馈]: 回退ordinary AICPU常量折叠迁移",
+      "url": "https://gitcode.com/cann/ge/issues/609",
+      "state": "closed",
+      "assignee": "pan-tong",
+      "author": "pan-tong",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "607",
+      "title": "[Bug-Report|缺陷反馈]: pydflow 测试脚本将含空格的 Ascend 安装路径拆分为多个路径",
+      "url": "https://gitcode.com/cann/ge/issues/607",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "606",
+      "title": "[Bug-Report|缺陷反馈]: ge_test.sh 帮助列出的 --benchmark 参数无法解析",
+      "url": "https://gitcode.com/cann/ge/issues/606",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "605",
+      "title": "[Bug-Report|缺陷反馈]: 无参数运行 ge docs 全量构建成功后仍返回失败码",
+      "url": "https://gitcode.com/cann/ge/issues/605",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "604",
+      "title": "[Bug-Report|缺陷反馈]: ArgsChecker 负索引逃过上界检查并触发 vector 越界访问",
+      "url": "https://gitcode.com/cann/ge/issues/604",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "603",
+      "title": "[Bug-Report|缺陷反馈]: TensorFlow ParseFromMemory 成功用例未校验返回状态",
+      "url": "https://gitcode.com/cann/ge/issues/603",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "602",
+      "title": "[Bug-Report|缺陷反馈]: LLMDataDist 的两个负向测试在调用未抛异常时仍通过",
+      "url": "https://gitcode.com/cann/ge/issues/602",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "601",
+      "title": "[Bug-Report|缺陷反馈]: CPU 测试入口遗漏 HostCPU UT/ST 测试二进制",
+      "url": "https://gitcode.com/cann/ge/issues/601",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "600",
+      "title": "[Bug-Report|缺陷反馈]: runtime/stub 增量构建未跟踪 stub 生成输入",
+      "url": "https://gitcode.com/cann/ge/issues/600",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "599",
+      "title": "[Bug-Report|缺陷反馈]: 复用 OutputData 执行 FIFO 数量增加的模型时地址缓冲区发生越界写",
+      "url": "https://gitcode.com/cann/ge/issues/599",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "598",
+      "title": "[Bug-Report|缺陷反馈]: MemoryTraceChecker 未正确校验日志中的流 ID",
+      "url": "https://gitcode.com/cann/ge/issues/598",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "597",
+      "title": "[Bug-Report|缺陷反馈]: ge_format.sh 的 changed/lastcommit 模式漏掉暂存与 base 源文件",
+      "url": "https://gitcode.com/cann/ge/issues/597",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "595",
+      "title": "[Bug-Report|缺陷反馈]: ge_clean.sh 无参数默认清理成功后仍返回失败",
+      "url": "https://gitcode.com/cann/ge/issues/595",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "593",
+      "title": "[Bug-Report|缺陷反馈]: OM2 ZIP 文件提取遇到输出写入失败仍返回成功",
+      "url": "https://gitcode.com/cann/ge/issues/593",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "591",
+      "title": "[Feature-Request|需求反馈]: GE接入opbase ordinary AICPU常量折叠",
+      "url": "https://gitcode.com/cann/ge/issues/591",
+      "state": "open",
+      "assignee": "pan-tong",
+      "author": "pan-tong",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "590",
+      "title": "[Bug-Report|缺陷反馈]: Recommendation 示例的三个整数命令行参数会静默接受尾随非数字字符",
+      "url": "https://gitcode.com/cann/ge/issues/590",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "589",
+      "title": "[Documentation|文档反馈]: custom_es_api 中英文 README 将 pbtxt dump 输出目录误写为 build 目录",
+      "url": "https://gitcode.com/cann/ge/issues/589",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "588",
+      "title": "[Documentation|文档反馈]: 六份历史原型库文档仍把 gen_esb 模式写成不支持的独立参数",
+      "url": "https://gitcode.com/cann/ge/issues/588",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "587",
+      "title": "[Bug-Report|缺陷反馈]: llm_utils.cc 在大尺寸低 bit tensor 下将字节数计算结果截断为负值",
+      "url": "https://gitcode.com/cann/ge/issues/587",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "586",
+      "title": "[Bug-Report|缺陷反馈]: monitor_cpu.sh 的 status 在 curl 失败时仍返回成功",
+      "url": "https://gitcode.com/cann/ge/issues/586",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "585",
+      "title": "[Bug-Report|缺陷反馈]: ATC 启动脚本在安装目录含空格时无法定位 atc.bin",
+      "url": "https://gitcode.com/cann/ge/issues/585",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "582",
+      "title": "[Bug-Report|缺陷反馈]: easy_graph 比较器将同端点的 DATA/CTRL 边判为等价",
+      "url": "https://gitcode.com/cann/ge/issues/582",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "581",
+      "title": "[Bug-Report|缺陷反馈]: Linux mmRealPath 忽略 realPathLen 导致缓冲区越界写入",
+      "url": "https://gitcode.com/cann/ge/issues/581",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "580",
+      "title": "[Bug-Report|缺陷反馈]: llm.SyncKvCacheWaitTime 超出 int32 上限后被接受并转为负超时",
+      "url": "https://gitcode.com/cann/ge/issues/580",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "576",
+      "title": "[Bugfix] 生成算子 JSON 前校验输入和输出目录",
+      "url": "https://gitcode.com/cann/ge/issues/576",
+      "state": "open",
+      "assignee": "gcw_Z57idahf",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "560",
+      "title": "[Bug-Report|缺陷反馈]: 修复 RT2 AICPU Memcpy 内存提前释放问题",
+      "url": "https://gitcode.com/cann/ge/issues/560",
+      "state": "closed",
+      "assignee": "sujunwei3",
+      "author": "sujunwei3",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "549",
+      "title": "[Question|问题咨询]: LLMDataDist.init() 初始化失败：_BuiltIn_initialize_func UDF 图 Dequeue output7 超时",
+      "url": "https://gitcode.com/cann/ge/issues/549",
+      "state": "closed",
+      "assignee": "whh_smile",
+      "author": "whh_smile",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "548",
+      "title": "[Bug-Report|缺陷反馈]: ResNet50 Top-5 在分数并列时丢失类别",
+      "url": "https://gitcode.com/cann/ge/issues/548",
+      "state": "closed",
+      "assignee": "CodeLibb",
+      "author": "CodeLibb",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "547",
+      "title": "[Bug-Report|缺陷反馈]: 图片预处理失败后脚本仍返回退出码 0",
+      "url": "https://gitcode.com/cann/ge/issues/547",
+      "state": "closed",
+      "assignee": "CodeLibb",
+      "author": "CodeLibb",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "543",
+      "title": "👋GitCode开源社区账号绑定功能正式开启！|💰 一个动作 ✅ 多份收益",
+      "url": "https://gitcode.com/cann/ge/issues/543",
+      "state": "open",
+      "assignee": "gcw_hvNkrxD8",
+      "author": "gcw_hvNkrxD8",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "537",
+      "title": "[Bug-Report|缺陷反馈]: GE 认证插件缺少 GetSignLength 导出时触发空函数指针崩溃",
+      "url": "https://gitcode.com/cann/ge/issues/537",
+      "state": "closed",
+      "assignee": "KaranocaVe",
+      "author": "KaranocaVe",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "533",
+      "title": "[Bug|问题反馈]: dflow-executor 安装脚本日志变量拼写错误 paramm，install_run 打印空路径",
+      "url": "https://gitcode.com/cann/ge/issues/533",
+      "state": "closed",
+      "assignee": "2403_87936996",
+      "author": "2403_87936996",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "532",
+      "title": "[Bug|问题反馈]: BufferFusionInfoCollecter 类及源文件名 collecter 拼写错误（应为 collector），与 UT/ST 测试文件命名不一致",
+      "url": "https://gitcode.com/cann/ge/issues/532",
+      "state": "closed",
+      "assignee": "2403_87936996",
+      "author": "2403_87936996",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "531",
+      "title": "[Bug|问题反馈]: graph_metadef/CMakeLists.txt 引用不存在的 tests 子目录，开启 ENABLE_METADEF_UT/ST/BENCHMARK 配置即失败",
+      "url": "https://gitcode.com/cann/ge/issues/531",
+      "state": "closed",
+      "assignee": "2403_87936996",
+      "author": "2403_87936996",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "494",
+      "title": "[Bug-Report|缺陷反馈]: 图构建与模型管理核心路径存在可优化点:线性查找、粗粒度锁与超大类抽象耦合",
+      "url": "https://gitcode.com/cann/ge/issues/494",
+      "state": "closed",
+      "assignee": "gcw_3CxwvBIO",
+      "author": "benjamin920101",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/ge",
+      "number": "486",
+      "title": "[Question|问题咨询]: CANN 8.5.0上图模式有一个profiling_trace_ex，可能导致了一段空泡",
+      "url": "https://gitcode.com/cann/ge/issues/486",
+      "state": "closed",
+      "assignee": "gcw_3CxwvBIO",
+      "author": "muzhiyu6",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/ge",
+      "number": "467",
+      "title": "[Documentation|文档反馈]: build.md 依赖/UT章节与Dockerfile若干缺口（lcov可选性未标注、UT未提示ASAN默认开启、Dockerfile基于EOL的ubuntu18.04）",
+      "url": "https://gitcode.com/cann/ge/issues/467",
+      "state": "closed",
+      "assignee": "gcw_3CxwvBIO",
+      "author": "gothizzz",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/ge",
+      "number": "447",
+      "title": "[Question|问题咨询]: aclmdlExecuteAsync和aclrtSynchronizeStream间时延，单次推理符合msprof性能数据，多次推理时延异常拉长",
+      "url": "https://gitcode.com/cann/ge/issues/447",
+      "state": "closed",
+      "assignee": "Ren_Jie",
+      "author": "tttmmmppp",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/ge",
+      "number": "434",
+      "title": "[Documentation|文档反馈]: md文档中拼写问题",
+      "url": "https://gitcode.com/cann/ge/issues/434",
+      "state": "closed",
+      "assignee": "Mutu010",
+      "author": "whh_smile",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/ge",
+      "number": "423",
+      "title": "[Feature-Request|需求反馈]: 调整常量折叠V2 soname匹配规则",
+      "url": "https://gitcode.com/cann/ge/issues/423",
+      "state": "closed",
+      "assignee": "pan-tong",
+      "author": "pan-tong",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "412",
+      "title": "[Question|问题咨询]: GE模式是否支持mxfp8",
+      "url": "https://gitcode.com/cann/ge/issues/412",
+      "state": "closed",
+      "assignee": "gcw_3CxwvBIO",
+      "author": "nichorians",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/ge",
+      "number": "402",
+      "title": "[Bug-Report|缺陷反馈]: libhcom_executor.so: undefined symbol: _ZN4hccl31ReleaseA5AicpuGraphSyncResourceEPKc",
+      "url": "https://gitcode.com/cann/ge/issues/402",
+      "state": "closed",
+      "assignee": "jiangxinyu3",
+      "author": "jiangxinyu3",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "389",
+      "title": "[BUG] HostCpuEngine::DlopenLib 加载失败时不应上报 E19999 / 打 ERROR 日志",
+      "url": "https://gitcode.com/cann/ge/issues/389",
+      "state": "closed",
+      "assignee": "pan-tong",
+      "author": "pan-tong",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "383",
+      "title": "[Feature|需求建议] 支持常量折叠 V2 Host CPU 与 AICPU 路由能力",
+      "url": "https://gitcode.com/cann/ge/issues/383",
+      "state": "closed",
+      "assignee": "pan-tong",
+      "author": "pan-tong",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/ge",
+      "number": "367",
+      "title": "[Bug-Report|缺陷反馈]: 【外部开发者】TilingContextBuilder::BuildRtTensor 未初始化 TensorData size，导致 tiling 阶段 gert::Tensor::GetSize() 返回 0",
+      "url": "https://gitcode.com/cann/ge/issues/367",
+      "state": "closed",
+      "assignee": "peacesheep",
+      "author": "yuchen97",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/ge",
+      "number": "357",
+      "title": "[Question|问题咨询]: ge profiling性能采集支持EP模式，还是支持RC模式，还是都支持呢，可以具体解释下吗",
+      "url": "https://gitcode.com/cann/ge/issues/357",
+      "state": "closed",
+      "assignee": "gcw_3CxwvBIO",
+      "author": "Aaaaaa_369",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/ge",
+      "number": "335",
+      "title": "[Bug-Report|缺陷反馈]: runtime/v2 以及compiler/engines/cpu_engine仓中日志有些语法错误",
+      "url": "https://gitcode.com/cann/ge/issues/335",
+      "state": "closed",
+      "assignee": "zhaowenrui666",
+      "author": "zhaowenrui666",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "45",
+      "title": "[Bug-Report|缺陷反馈]: 接口检查对参数及常量字符排序，参数位置变化和不同常量可误通过",
+      "url": "https://gitcode.com/cann/tensorflow/issues/45",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "44",
+      "title": "[Bug-Report|缺陷反馈]: 未找到 python3.7 且配置输入为空时抛 TypeError，中断配置重试",
+      "url": "https://gitcode.com/cann/tensorflow/issues/44",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "43",
+      "title": "[Bug-Report|缺陷反馈]: configure 接受现有普通文件作为 CANN 安装目录并写出错误配置",
+      "url": "https://gitcode.com/cann/tensorflow/issues/43",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "39",
+      "title": "[Documentation|文档反馈]: MemoryConfig中文构造原型遗漏中间位置参数",
+      "url": "https://gitcode.com/cann/tensorflow/issues/39",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "38",
+      "title": "[Documentation|文档反馈]: Session日志回传示例把stderr作为待打印输入",
+      "url": "https://gitcode.com/cann/tensorflow/issues/38",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "37",
+      "title": "[Documentation|文档反馈]: TF2整网精度对比callbacks示例顶层缩进错误",
+      "url": "https://gitcode.com/cann/tensorflow/issues/37",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "36",
+      "title": "[Documentation|文档反馈]: 迭代下沉图像输入示例混淆尺寸维度并漏传shuffle参数",
+      "url": "https://gitcode.com/cann/tensorflow/issues/36",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "35",
+      "title": "[Documentation|文档反馈]: TF2数据集分片片段在顶层保留多余缩进",
+      "url": "https://gitcode.com/cann/tensorflow/issues/35",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "34",
+      "title": "[Documentation|文档反馈]: is_finite迁移示例只注释首行而遗留非法续行",
+      "url": "https://gitcode.com/cann/tensorflow/issues/34",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "33",
+      "title": "[Documentation|文档反馈]: Session分布式广播函数的for及if函数体缺少缩进",
+      "url": "https://gitcode.com/cann/tensorflow/issues/33",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "32",
+      "title": "[Documentation|文档反馈]: 自动迁移示例的查找表初始化未正确置于Session块",
+      "url": "https://gitcode.com/cann/tensorflow/issues/32",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "31",
+      "title": "[Documentation|文档反馈]: 按rank选择数据dump的配置行缩进非法",
+      "url": "https://gitcode.com/cann/tensorflow/issues/31",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "30",
+      "title": "[Documentation|文档反馈]: 精度工具误差计数示例的条件表达式缺少 else",
+      "url": "https://gitcode.com/cann/tensorflow/issues/30",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "29",
+      "title": "ExperimentalConfig 训练加速示例调用未导入的 npu_config 模块",
+      "url": "https://gitcode.com/cann/tensorflow/issues/29",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "28",
+      "title": "NPUOptimizer 中英文调用示例多余缩进导致 IndentationError",
+      "url": "https://gitcode.com/cann/tensorflow/issues/28",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "27",
+      "title": "[Documentation|文档反馈] TellMeStepOrLossHook 示例 est.train 缺少参数逗号",
+      "url": "https://gitcode.com/cann/tensorflow/issues/27",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "26",
+      "title": "[Documentation|文档反馈] 变量广播回调中英文示例的 NumPy 调用缺少点号",
+      "url": "https://gitcode.com/cann/tensorflow/issues/26",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "21",
+      "title": "[Documentation|文档反馈]: 工具脚本中 Unsupport 拼写错误（应为 Unsupported），并会输出到用户可见提示",
+      "url": "https://gitcode.com/cann/tensorflow/issues/21",
+      "state": "open",
+      "assignee": "Chang-an-HW",
+      "author": "gcw_Z57idahf",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "15",
+      "title": "【缺陷报告】访问已释放内存 - 文件util.cc - 函数MappingDTStringTensor2DataItem - 行号69",
+      "url": "https://gitcode.com/cann/tensorflow/issues/15",
+      "state": "closed",
+      "assignee": "zhaowenrui666",
+      "author": "cxx03",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "14",
+      "title": "[Bug-Report|缺陷反馈]: abl/slog下线了，使用/runtime/src/dfx/log替换",
+      "url": "https://gitcode.com/cann/tensorflow/issues/14",
+      "state": "closed",
+      "assignee": "2403_87936996",
+      "author": "newstarzj",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "14",
+      "title": "[Bug-Report|缺陷反馈]: abl/slog下线了，使用/runtime/src/dfx/log替换",
+      "url": "https://gitcode.com/cann/tensorflow/issues/14",
+      "state": "closed",
+      "assignee": "wang-bin-789",
+      "author": "newstarzj",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "13",
+      "title": "TF Adapter 缺少分布式训练场景下的多机通信优化文档",
+      "url": "https://gitcode.com/cann/tensorflow/issues/13",
+      "state": "closed",
+      "assignee": "wang-bin-789",
+      "author": "",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "9",
+      "title": "RELEASE.md 的 Main features 章节为空",
+      "url": "https://gitcode.com/cann/tensorflow/issues/9",
+      "state": "closed",
+      "assignee": "yelongjian",
+      "author": "",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "8",
+      "title": "[Bug-Report|缺陷反馈]: 基于TF Adapter完成适配之后，模型训练会出现nan值，但是在GPU上不会",
+      "url": "https://gitcode.com/cann/tensorflow/issues/8",
+      "state": "closed",
+      "assignee": "du-hua1024",
+      "author": "Jasmine1111111",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/tensorflow",
+      "number": "7",
+      "title": "文档反馈-描述不清楚（易理解）-\"hyperparameter borrowing\"未给出中文解释，建议补充\"（即超参借用/成熟模型复用）\"。",
+      "url": "https://gitcode.com/cann/tensorflow/issues/7",
+      "state": "closed",
+      "assignee": "chenqian1365",
+      "author": "dlf123456",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "168",
+      "title": "[Documentation|文档反馈]: 中英文离线编译指南的准备命令在重复执行或复制失败时处理不安全",
+      "url": "https://gitcode.com/cann/metadef/issues/168",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "125",
+      "title": "[Bug-Report|缺陷反馈]: OpDef 构造遇到空 AICore 回调时错误日志缺少格式参数",
+      "url": "https://gitcode.com/cann/metadef/issues/125",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "120",
+      "title": "[Documentation|文档反馈]: ContinuousVector::SetSize 的越界示例调用 GetSize 且错误码与实现不符",
+      "url": "https://gitcode.com/cann/metadef/issues/120",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "119",
+      "title": "[Documentation|文档反馈]: TilingContextBuilder 三个弱符号接口示例含关键字拼写和未声明变量错误",
+      "url": "https://gitcode.com/cann/metadef/issues/119",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "115",
+      "title": "[Bug-Report|缺陷反馈]: AnyValue 内联存储路径把右值退化为复制构造",
+      "url": "https://gitcode.com/cann/metadef/issues/115",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "114",
+      "title": "[Documentation|文档反馈]: AddOverflow 与 MulOverflow 文档中的 ret 说明与返回值语义矛盾",
+      "url": "https://gitcode.com/cann/metadef/issues/114",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "113",
+      "title": "[Bug-Report|缺陷反馈]: aarch64-hcc-toolchain.cmake 的编译规则无法处理含空格的源文件路径",
+      "url": "https://gitcode.com/cann/metadef/issues/113",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "112",
+      "title": "[Bug-Report|缺陷反馈]: tests/run_test.sh 无法将含空格的第三方库路径完整传给 CMake",
+      "url": "https://gitcode.com/cann/metadef/issues/112",
+      "state": "open",
+      "assignee": "dududu121",
+      "author": "dududu121",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "107",
+      "title": "[Bug-Report|缺陷反馈]: SetOpSelectFormat接口没有和GetMergeInputsOutputs()行成联动，在动态dtype/format的时候，没有禁止setDefaultND",
+      "url": "https://gitcode.com/cann/metadef/issues/107",
+      "state": "closed",
+      "assignee": "gcw_3CxwvBIO",
+      "author": "ray-shaw",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "100",
+      "title": "[Bug-Report|缺陷反馈]: gert::Shape::SetDim 和 Stride::SetStride 不应修改 dim_num",
+      "url": "https://gitcode.com/cann/metadef/issues/100",
+      "state": "closed",
+      "assignee": "KaranocaVe",
+      "author": "KaranocaVe",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "99",
+      "title": "[Bug-Report|缺陷反馈]: TensorData::ShareFrom 共享引用失败后仍保留 manager",
+      "url": "https://gitcode.com/cann/metadef/issues/99",
+      "state": "closed",
+      "assignee": "KaranocaVe",
+      "author": "KaranocaVe",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "81",
+      "title": "[Bug-Report|缺陷反馈]: init_env.sh硬编码CANN_VERSION=9.0.0与master制品库实际版本(9.1.0)漂移导致下载404",
+      "url": "https://gitcode.com/cann/metadef/issues/81",
+      "state": "closed",
+      "assignee": "gcw_3CxwvBIO",
+      "author": "gothizzz",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "80",
+      "title": "[Bug-Report|缺陷反馈]: check_env.sh libasan检查未覆盖openEuler等dnf系gcc库路径，产生误报",
+      "url": "https://gitcode.com/cann/metadef/issues/80",
+      "state": "closed",
+      "assignee": "gcw_3CxwvBIO",
+      "author": "gothizzz",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "75",
+      "title": "[Bug-Report|缺陷反馈]: 使用cann 9.0.0基于Ascend的FFmpeg流媒体框架指导进行编译报错/usr/local/Ascend/cann-9.0.0/include/acl/acl_dump.h:82:48: 错误: unknown type name 'acldumpType'",
+      "url": "https://gitcode.com/cann/metadef/issues/75",
+      "state": "closed",
+      "assignee": "yring_8",
+      "author": "Kevin_lee127",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/metadef",
+      "number": "70",
+      "title": "[Question|问题咨询]: 如何获得OM的中间输出？",
+      "url": "https://gitcode.com/cann/metadef/issues/70",
+      "state": "closed",
+      "assignee": "ClarkXie",
+      "author": "gcw_b8nYhkS1",
+      "author_is_assignee": false
+    },
+    {
+      "repo": "cann/triton-inference-server-ge-backend",
+      "number": "66",
+      "title": "[Bug-Report|缺陷反馈]: 含空格源码或 Python 路径被拆分，传给 CMake 的安装路径与解释器错误",
+      "url": "https://gitcode.com/cann/triton-inference-server-ge-backend/issues/66",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/triton-inference-server-ge-backend",
+      "number": "65",
+      "title": "[Bug-Report|缺陷反馈]: PyTorch ABI 探测失败仍继续编译并静默选用 ABI=0",
+      "url": "https://gitcode.com/cann/triton-inference-server-ge-backend/issues/65",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/triton-inference-server-ge-backend",
+      "number": "64",
+      "title": "[Bug-Report|缺陷反馈]: 默认 Triton 安装路径未导出，CMake 收到空路径并安装到 /backends",
+      "url": "https://gitcode.com/cann/triton-inference-server-ge-backend/issues/64",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/triton-inference-server-ge-backend",
+      "number": "63",
+      "title": "[Bug-Report|缺陷反馈]: build.sh 从仓库外运行会清空调用者的构建目录",
+      "url": "https://gitcode.com/cann/triton-inference-server-ge-backend/issues/63",
+      "state": "open",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/triton-inference-server-ge-backend",
+      "number": "56",
+      "title": "[文档缺陷] 快速入门的 perf_analyzer 示例与模型、端口不一致",
+      "url": "https://gitcode.com/cann/triton-inference-server-ge-backend/issues/56",
+      "state": "closed",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/triton-inference-server-ge-backend",
+      "number": "55",
+      "title": "[文档缺陷] README 和问题定位遗漏 TensorFlow .pb 模型支持",
+      "url": "https://gitcode.com/cann/triton-inference-server-ge-backend/issues/55",
+      "state": "closed",
+      "assignee": "Ethan_Zou",
+      "author": "Ethan_Zou",
+      "author_is_assignee": true
+    },
+    {
+      "repo": "cann/triton-inference-server-ge-backend",
+      "number": "44",
+      "title": "[Documentation] Profiling.md 第 7 张配图相对层级错误，图片无法显示",
+      "url": "https://gitcode.com/cann/triton-inference-server-ge-backend/issues/44",
+      "state": "closed",
+      "assignee": "2403_87936996",
+      "author": "2403_87936996",
+      "author_is_assignee": true
+    }
+  ]
+}

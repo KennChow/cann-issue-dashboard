@@ -50,7 +50,7 @@ npm run preview
 4. Actions → **Sync and deploy dashboard** → Run workflow；可勾选 `full`。
 5. Pages URL 为 `https://<owner>.github.io/<repo>/`。Vite 使用相对资源路径；Hash 路由在子目录刷新无需 404 回退。
 
-工作流 Cron：`0 1,3,6,8,10,12 * * *`，对应北京时间每天 09、11、14、16、18、20 点。GitHub 调度可能延迟，页面使用实际采集时间。公开仓库长期无活动时 GitHub 可能暂停 schedule，请检查 Actions 状态。
+工作流 Cron：`0 1,2,3,4,6,7,8,9,10,11,12,13 * * 1-6`，对应北京时间周一至周六 09、10、11、12、14、15、16、17、18、19、20、21 点（周日不定时触发）。GitHub 调度可能延迟，页面使用实际采集时间。公开仓库长期无活动时 GitHub 可能暂停 schedule，请检查 Actions 状态。
 
 采集构建 job 仅有 contents:write；部署 job 仅有 pages:write、id-token:write。所有发布执行使用同一 concurrency group，避免并发数据提交。数据提交带 `[skip ci]` 且数据路径不触发 push 工作流。PR 检查不接触令牌、不部署。
 
@@ -93,3 +93,27 @@ MIT。此仓库独立实现，未复制参考项目业务代码。上游 Issue �
 页面导航“内部责任人总表”合并四仓完整成员名单，按用户名忽略大小写去重，显示成员来源仓库、人工确认依据和名下 Open 数量，支持搜索与 HTML 导出。只要在任一仓库是成员，就在四仓统一作为内部责任人。`config/internal_people.json` 维护人工确认的内部开发者（login + reason）；已登记用户确认的 Chang-an-HW。该总表不推断雇佣关系，不修改 GitCode 成员权限。维护者回复判定仍使用 Issue 所属仓库成员，避免把跨仓身份当作该仓维护权限。
 
 每次同步（包括 --repo）都会刷新四仓成员来源。部分来源失败时保留上次名单供追溯，但过期来源不作为当前确认依据；无法排除内部身份的人员显示未知，不误标外部。
+
+## 扫描文字报告与邮件
+
+每次工作流扫描后生成 UTF-8 纯文字报告，包括全量及分仓统计、首次发现的 Issue（标题、状态、创建时间、链接）、已有 Issue 更新数、新增评论和 AI 报告数。新增以扫描前快照为基线，增量重叠窗口不会重复计数；首次运行无基线时会明确说明。失败报告注明保留数据及异常。手动触发和代码 push 扫描也发送报告；周日仅停用定时触发。
+
+报告保存在 `.cache/scan-report.txt`，Actions 的 `scan-report` artifact 保留 30 天。独立 mail job 发送邮件，邮件失败会使工作流显示失败，但不阻断看板部署。邮件失败后可通过 Re-run failed jobs 重试 mail job，使用同一份报告；SMTP 部分投递成功时重试可能重复送达。
+
+默认收件人为 `config/mail.json` 中的两个地址，可修改文件，或设置 Actions Variable `REPORT_RECIPIENTS`（英文逗号分隔）覆盖，无须改代码。
+
+在 GitHub 仓库 Settings → Secrets and variables → Actions 配置：
+
+| 类型 | 名称 | 含义 |
+|---|---|---|
+| Secret | SMTP_HOST | 发件服务 SMTP 主机 |
+| Secret | SMTP_PORT | 默认 SSL 465；STARTTLS 587 |
+| Secret | SMTP_SECURITY | `ssl`（默认）或 `starttls` |
+| Variable | REPORT_RECIPIENTS | 可选，英文逗号分隔的收件地址 |
+| Secret | SMTP_FROM | 发件邮箱 |
+| Secret | SMTP_USERNAME | SMTP 登录账号 |
+| Secret | SMTP_PASSWORD | SMTP 密码或邮箱授权码 |
+
+未配置 SMTP 时报告仍生成、保存，mail job 明确失败。不会把 SMTP 密钥写入报告、前端或 Git 仓库。邮件为 `text/plain; charset=utf-8`。本地可用 `python3 -m collector.scan_report --previous <扫描前快照路径>` 生成报告，再设置上述环境变量并执行 `python3 -m collector.scan_report --send` 发送。
+
+SMTP 配置沿用 `KennChow/cann-radar-private` 的 `smtp_config.ini`：`[smtp] server/port/username/password` 分别映射到对应 SMTP Secrets，`[mail] from` 映射到 `SMTP_FROM`，使用 SSL。配置安全导入 Secrets，工作流不直接拉取私有仓库；源配置更新后需同步更新 Secrets。

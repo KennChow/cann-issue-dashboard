@@ -4,7 +4,7 @@ on:
     branches: [main]
     paths-ignore: ["public/data/**", "docs/**", "**.md"]
   schedule:
-    - cron: "0 1,3,6,8,10,12 * * *"
+    - cron: "0 1,2,3,4,6,7,8,9,10,11,12,13 * * 1-6"
   workflow_dispatch:
     inputs:
       full:
@@ -24,6 +24,7 @@ jobs:
       contents: write
     outputs:
       sync-outcome: ${{ steps.sync.outcome }}
+      report-outcome: ${{ steps.report.outcome }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,6 +43,10 @@ jobs:
             .cache/comments
           key: report-trees-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: report-trees-
+      - name: Save pre-scan baseline
+        run: |
+          mkdir -p .cache
+          cp public/data/dashboard.json .cache/before-scan.json
       - name: Sync public GitCode data
         id: sync
         continue-on-error: true
@@ -54,6 +59,19 @@ jobs:
           else
             python -m collector.sync
           fi
+      - name: Generate plain-text scan report
+        id: report
+        if: always() && steps.sync.outcome != 'skipped'
+        env:
+          SYNC_OUTCOME: ${{ steps.sync.outcome }}
+        run: python -m collector.scan_report --outcome "$SYNC_OUTCOME"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.report.outcome == 'success'
+        with:
+          name: scan-report
+          path: .cache/scan-report.txt
+          include-hidden-files: true
+          retention-days: 30
       - name: Validate publication payload
         run: python scripts/validate.py
       - run: npm run build
@@ -94,3 +112,28 @@ jobs:
         run: |
           echo 'Synchronization failed; retained data and diagnostics have been published.'
           exit 1
+
+  mail:
+    needs: build
+    if: always() && needs.build.outputs.report-outcome == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: scan-report
+          path: .cache
+      - name: Send plain-text report
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURITY: ${{ secrets.SMTP_SECURITY || 'ssl' }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          REPORT_RECIPIENTS: ${{ vars.REPORT_RECIPIENTS }}
+        run: python -m collector.scan_report --send

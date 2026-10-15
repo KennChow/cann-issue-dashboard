@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Data, Stats } from "./types";
-import { fmt, short, params, go } from "./shared";
+import { fmt, short, params, go, memberLabel } from "./shared";
 import { Badges } from "./Badges";
 import { Chart, Bars, Lines } from "./Charts";
 import { IssueList } from "./IssueList";
@@ -379,8 +379,10 @@ function App() {
                 </select>
               </div>
               <p className="muted">
-                多人负责的 Issue
-                在每人名下计一次；人员合计可能超过去重后的全局数量。正常指未进入时间预警区间。
+                每条 Open Issue
+                仅计入首位内部责任人；无内部成员时计入首位责任人。顺序以 GitCode
+                Assignee 列表为准，人员合计等于 Open
+                总数。内部身份按所属仓库判断。
               </p>
               <div className="owner-grid">
                 {[...data.owners]
@@ -393,7 +395,7 @@ function App() {
                     <button
                       key={o.person.login}
                       className="owner"
-                      onClick={() => go({ owner: o.person.login })}
+                      onClick={() => go({ workload_owner: o.person.login })}
                     >
                       <div className="owner-name">
                         {o.person.avatar ? (
@@ -411,6 +413,11 @@ function App() {
                           </b>
                         )}
                         <strong>{o.person.login}</strong>
+                        <span
+                          className={`tag ${o.role === "external" ? "amber" : ""}`}
+                        >
+                          {memberLabel[o.role] || memberLabel.unknown}
+                        </span>
                         <b>{o.stats.open}</b>
                       </div>
                       <div className="workbar">
@@ -429,7 +436,10 @@ function App() {
                       </div>
                       <small>
                         {Object.entries(o.repos)
-                          .map(([r, n]) => `${short(r)} ${n}`)
+                          .map(
+                            ([r, n]) =>
+                              `${short(r)} ${n} · ${memberLabel[o.repo_roles?.[r]] || memberLabel.unknown}`,
+                          )
                           .join(" / ")}
                       </small>
                     </button>

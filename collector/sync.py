@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from .api import Client, SyncError
-from .model import normalize, comments, reply, status, stats, owners, date, user, internal_assignment
+from .model import normalize, comments, reply, status, stats, owners, date, user, internal_assignment, workload_owner
 from .reports import index_reports
 from .history import history, activity
 ROOT = Path(__file__).resolve().parents[1]
@@ -123,11 +123,17 @@ def collect_repo(client, repo, old, config, now, full=False, cache_dir=None):
             events.append({'at': now.isoformat(), 'kind': '首次观测', 'detail': issue['state']})
         else:
             for key in ('state', 'assignees', 'source_status'):
-                if before[key] != issue[key]:
+                previous_value = [p['login'] for p in before[key]] if key == 'assignees' else before[key]
+                current_value = [p['login'] for p in issue[key]] if key == 'assignees' else issue[key]
+                if previous_value != current_value:
                     events.append({'at': now.isoformat(), 'kind': '观测到 ' + key + ' 变化', 'detail': json.dumps(issue[key], ensure_ascii=False)})
         issue['events'] = events[-100:]
         rows[issue['id']] = issue
+    assignment_names = {name.casefold() for name in assignment_members}
     for issue in rows.values():
+        for person in issue['assignees']:
+            person['membership'] = 'internal' if person['login'].casefold() in assignment_names else ('external' if assignment_members_complete else 'unknown')
+        issue['workload_owner'] = workload_owner(issue)['login']
         issue['internal_assignment'] = internal_assignment(issue, assignment_members, assignment_members_complete)
         issue['reply_status'], issue['first_reply_at'] = reply(issue, members, member_complete, config['bots'])
     return {'issues': list(rows.values()), 'last_success': now.isoformat(), 'last_full': now.isoformat() if full else old['last_full'],

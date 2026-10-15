@@ -24,6 +24,8 @@ export function IssueList({
       timeZone: "Asia/Shanghai",
     });
     return (
+      (!value("workload_owner") ||
+        i.workload_owner === value("workload_owner")) &&
       (!value("repo") || i.repo === value("repo")) &&
       (!value("author") || i.author.login === value("author")) &&
       (!value("owner") ||
@@ -115,6 +117,14 @@ export function IssueList({
           )
             .sort()
             .map((a) => [a, a] as [string, string]),
+        ])}
+        {select("workload_owner", "工作量归属", [
+          ["", "全部"],
+          ...Array.from(
+            new Set(issues.map((i) => i.workload_owner || "未分配")),
+          )
+            .sort()
+            .map((n) => [n, n] as [string, string]),
         ])}
         {select("author", "创建者", [
           ["", "全部创建者"],

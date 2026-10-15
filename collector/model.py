@@ -96,13 +96,25 @@ def stats(issues):
     result['normal'] = sum(i['state'] == 'open' and not i['metrics']['overdue'] and not i['metrics']['due_soon'] for i in issues)
     return result
 
+def workload_owner(issue):
+    people = issue['assignees']
+    return next((p for p in people if p.get('membership') == 'internal'),
+                people[0] if people else {'login': '未分配', 'avatar': '', 'membership': 'unassigned'})
+
 def owners(issues):
     groups = {}
     for issue in issues:
         if issue['state'] != 'open':
             continue
-        for person in issue['assignees'] or [{'login': '未分配', 'avatar': ''}]:
-            group = groups.setdefault(person['login'], {'person': person, 'issues': [], 'repos': {}})
-            group['issues'].append(issue)
-            group['repos'][issue['repo']] = group['repos'].get(issue['repo'], 0) + 1
-    return [{**g, 'stats': stats(g['issues']), 'issues': [i['id'] for i in g['issues']]} for g in groups.values()]
+        person = workload_owner(issue)
+        role = person.get('membership', 'unknown')
+        group = groups.setdefault(person['login'], {'person': person, 'issues': [], 'repos': {}, 'repo_roles': {}})
+        group['issues'].append(issue)
+        group['repos'][issue['repo']] = group['repos'].get(issue['repo'], 0) + 1
+        group['repo_roles'][issue['repo']] = role
+    result = []
+    for group in groups.values():
+        roles = set(group['repo_roles'].values())
+        role = next(iter(roles)) if len(roles) == 1 else 'mixed'
+        result.append({**group, 'role': role, 'stats': stats(group['issues']), 'issues': [i['id'] for i in group['issues']]})
+    return result

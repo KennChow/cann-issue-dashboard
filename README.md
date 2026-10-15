@@ -68,7 +68,7 @@ npm run preview
 | 即将超期 | Open 且 `264h < now-created_at <= 336h`，与超期不重叠 |
 | 正常 | Open 且未进入时间预警；并不表示已分配或已回复 |
 | 累计闭环率 | 当前已采集 Closed / (Open + Closed)，空集合显示 — |
-| 人员统计 | 每个 Assignee 各计一次；全局以 repo + number 去重；无 Assignee 归入未分配 |
+| 人员统计 | 每条 Open Issue 只计入 API Assignee 顺序中的首位仓库成员；无内部成员时计入首位责任人，并标外部开发者；成员信息不足显示无法确认；无 Assignee 归入未分配。跨仓身份不同分别标注；合计等于全局 Open 总数 |
 | 处理时长 | 创建至采集快照的时间，Closed 也保留该口径；真实关闭时间另列 |
 | 每日新增 | 按真实 created_at 的北京时间日期分组 |
 | 每日关闭 | 当前 Closed 的真实 finished_at/closed_at 按北京时间日期分组，缺失则不归日 |

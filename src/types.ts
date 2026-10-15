@@ -1,4 +1,4 @@
-export type Person = { login: string; avatar: string };
+export type Person = { login: string; avatar: string; membership?: string };
 export type Metrics = {
   age_hours: number;
   overdue_hours: number;
@@ -19,6 +19,7 @@ export type Issue = {
   url: string;
   author: Person;
   assignees: Person[];
+  workload_owner?: string;
   state: string;
   internal_assignment?: "assigned" | "missing" | "unknown";
   reply_status: string;
@@ -73,6 +74,8 @@ export type Data = {
   stats: Stats;
   owners: {
     person: Person;
+    role: string;
+    repo_roles: Record<string, string>;
     stats: Stats;
     repos: Record<string, number>;
     issues: string[];

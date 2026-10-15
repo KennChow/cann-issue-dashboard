@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from collector.model import stats, status, date
+from collector.model import stats, status, date, owners
 p=Path('public/data/dashboard.json')
 raw=p.read_text();data=json.loads(raw)
 assert data['schema_version']==1
@@ -14,6 +14,8 @@ for key in ('GITCODE_API_TOKEN','GITHUB_TOKEN','GH_TOKEN'):
 issues=[i for r in data['repositories'].values() for i in r['issues']]
 assert len({i['id'] for i in issues})==len(issues)
 assert stats(issues)==data['stats']
+assert owners(issues)==data['owners']
+assert sum(o['stats']['open'] for o in data['owners']) == data['stats']['open']
 for issue in issues:
     assert status(issue,date(data['generated_at']))==issue['metrics']
     assert issue['url'].startswith('https://gitcode.com/cann/')

@@ -26,7 +26,7 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(issue()['metrics']['unassigned'])
         self.assertFalse(issue(assignee={'login':'owner'})['metrics']['unassigned'])
     def test_multi_owner_deduplicated(self):
-        i=issue(assignees=[{'login':'a'},{'login':'b'},{'login':'a'}]);self.assertEqual(len(owners([i])),2);self.assertEqual(stats([i])['open'],1)
+        i=issue(assignees=[{'login':'a'},{'login':'b'},{'login':'a'}]);self.assertEqual(len(owners([i])),1);self.assertEqual(stats([i])['open'],1)
         self.assertEqual(owners([issue()])[0]['person']['login'],'未分配')
     def test_reply_roles(self):
         i=issue(1)
@@ -180,6 +180,21 @@ class InternalAssignmentTests(unittest.TestCase):
             def pages(self,path,**params):return []
         record=collect_repo(Fake(),'cann/ge',{'issues':[oldi],'last_full':NOW.isoformat(),'last_success':NOW.isoformat()},CONFIG,NOW)
         self.assertEqual(record['issues'][0]['internal_assignment'],'missing')
+
+class WorkloadTests(unittest.TestCase):
+    def test_first_internal_gets_single_issue(self):
+        i=issue(assignees=[{'login':'outside'},{'login':'inside1'},{'login':'inside2'}])
+        for p in i['assignees']:p['membership']='external' if p['login']=='outside' else 'internal'
+        groups=owners([i]);self.assertEqual(len(groups),1);self.assertEqual(groups[0]['person']['login'],'inside1');self.assertEqual(groups[0]['role'],'internal')
+    def test_external_first_and_unknown(self):
+        i=issue(assignees=[{'login':'a'},{'login':'b'}])
+        for p in i['assignees']:p['membership']='external'
+        self.assertEqual(owners([i])[0]['role'],'external');self.assertEqual(owners([i])[0]['person']['login'],'a')
+        i['assignees'][0]['membership']='unknown';self.assertEqual(owners([i])[0]['role'],'unknown')
+    def test_membership_varies_by_repo_and_conservation(self):
+        a=issue(assignees=[{'login':'a'}]);a['assignees'][0]['membership']='internal'
+        b=issue(assignees=[{'login':'a'}]);b['repo']='cann/metadef';b['assignees'][0]['membership']='external'
+        groups=owners([a,b,issue()]);self.assertEqual(sum(g['stats']['open'] for g in groups),3);self.assertEqual(groups[0]['role'],'mixed')
 
 if __name__ == '__main__':
     unittest.main()

@@ -107,3 +107,34 @@ test("internal assignee label drills down and is included in HTML export", async
   const fs = await import("node:fs/promises");
   expect(await fs.readFile(path, "utf8")).toContain("未分配内部责任人");
 });
+test("workload cards label outsiders and drill down to unique ownership", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "责任人工作量" }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".owner").filter({ hasText: "外部开发者" }).first(),
+  ).toBeVisible();
+  const data = await (await page.request.get("/data/dashboard.json")).json();
+  const target = data.owners.find((o: any) =>
+    o.issues.includes("cann/metadef#125"),
+  );
+  expect(target).toBeTruthy();
+  expect(target.role).not.toBe("external");
+  const card = page
+    .locator(".owner")
+    .filter({ has: page.locator("strong", { hasText: target.person.login }) });
+  await card.click();
+  await expect(page.getByLabel("工作量归属", { exact: true })).toHaveValue(
+    target.person.login,
+  );
+  await expect(
+    page.getByRole("button", {
+      name: `导出筛选结果 HTML（${target.stats.open} 项）`,
+    }),
+  ).toBeVisible();
+  await page.getByLabel("搜索标题 / 编号").fill("#125");
+  await expect(page.locator("table.issues tbody tr")).toHaveCount(1);
+});

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { Issue } from "./types";
-import { fmt } from "./shared";
+import { fmt, memberLabel } from "./shared";
 import { Badges } from "./Badges";
 import { exportView } from "./export";
 export function Detail({
@@ -75,7 +75,16 @@ export function Detail({
           <dt>创建者</dt>
           <dd>{i.author.login}</dd>
           <dt>负责人</dt>
-          <dd>{i.assignees.map((a) => a.login).join(", ") || "未分配"}</dd>
+          <dd>
+            {i.assignees
+              .map(
+                (a) =>
+                  `${a.login}（${memberLabel[a.membership || "unknown"]}）`,
+              )
+              .join(", ") || "未分配"}
+          </dd>
+          <dt>工作量归属</dt>
+          <dd>{i.workload_owner || "未分配"}</dd>
           <dt>内部责任归属</dt>
           <dd>
             {i.internal_assignment === "assigned"

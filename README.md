@@ -96,7 +96,7 @@ MIT。此仓库独立实现，未复制参考项目业务代码。上游 Issue �
 
 ## 扫描文字报告与邮件
 
-每次工作流扫描后生成 UTF-8 纯文字报告，包括全量及分仓统计、首次发现的 Issue（标题、状态、创建时间、链接）、已有 Issue 更新数、新增评论和 AI 报告数。新增以扫描前快照为基线，增量重叠窗口不会重复计数；首次运行无基线时会明确说明。失败报告注明保留数据及异常。手动触发和代码 push 扫描也发送报告；周日仅停用定时触发。
+每次工作流扫描后生成 UTF-8 纯文字报告，包括全量及分仓统计、首次发现的 Issue（标题、状态、链接）、已有 Issue 更新数、新增评论和 AI 报告数。新增以扫描前快照为基线，增量重叠窗口不会重复计数；首次运行无基线时会明确说明。失败报告注明保留数据及异常。手动触发和代码 push 扫描也发送报告；周日仅停用定时触发。
 
 报告保存在 `.cache/scan-report.txt`，Actions 的 `scan-report` artifact 保留 30 天。独立 mail job 发送邮件，邮件失败会使工作流显示失败，但不阻断看板部署。邮件失败后可通过 Re-run failed jobs 重试 mail job，使用同一份报告；SMTP 部分投递成功时重试可能重复送达。
 
@@ -117,3 +117,5 @@ MIT。此仓库独立实现，未复制参考项目业务代码。上游 Issue �
 未配置 SMTP 时报告仍生成、保存，mail job 明确失败。不会把 SMTP 密钥写入报告、前端或 Git 仓库。邮件为 `text/plain; charset=utf-8`。本地可用 `python3 -m collector.scan_report --previous <扫描前快照路径>` 生成报告，再设置上述环境变量并执行 `python3 -m collector.scan_report --send` 发送。
 
 SMTP 配置沿用 `KennChow/cann-radar-private` 的 `smtp_config.ini`：`[smtp] server/port/username/password` 分别映射到对应 SMTP Secrets，`[mail] from` 映射到 `SMTP_FROM`，使用 SSL。配置安全导入 Secrets，工作流不直接拉取私有仓库；源配置更新后需同步更新 Secrets。
+
+邮件采用简短的“全量概况 → 分仓数量 → 本次变化 → 新增 Issue 链接”结构，主题直接显示新增和更新数量；正常运行不重复列出扫描状态、每仓扫描时间和口径说明。

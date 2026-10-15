@@ -23,32 +23,32 @@ class ReportTests(unittest.TestCase):
         after['repositories']['cann/ge']['issues'][0]['title'] = '已更新'
         after['repositories']['cann/ge']['issues'].append(item(2))
         text = render(before, after)
-        self.assertIn('新增 Issue 1 条；已有 Issue 更新 1 条；新增评论 1 条', text)
+        self.assertIn('新增 Issue 1 / 更新 1 / 新评论 1', text)
         self.assertIn('https://gitcode.com/cann/ge/issues/2', text)
         self.assertNotIn('https://gitcode.com/cann/ge/issues/1', text)
-        self.assertIn('10:00:00（北京时间）', text)
-        self.assertIn('共 2 条，待处理 2 条', text)
+        self.assertIn('10:00（北京时间）', text)
+        self.assertIn('共 2 / 待处理 2', text)
 
     def test_overlap_and_failed_scan(self):
         before = snapshot([item(1)])
         after = copy.deepcopy(before)
         after['errors'] = ['cann/ge: HTTP 500']
         text = render(before, after, 'failure')
-        self.assertIn('新增 Issue 0 条', text)
+        self.assertIn('新增 Issue 0', text)
         self.assertIn('上次保留值', text)
         self.assertIn('HTTP 500', text)
 
     def test_initial_baseline(self):
         text = render({}, snapshot([item(1)]))
         self.assertIn('首次扫描，无历史基线', text)
-        self.assertIn('新增 Issue 1 条', text)
+        self.assertIn('新增 Issue 1', text)
 
     def test_partial_success(self):
         before = snapshot([item(1)])
         after = snapshot([item(1), item(2)])
         after['errors'] = ['other repo failed']
         text = render(before, after, 'failure')
-        self.assertIn('新增 Issue 1 条', text)
+        self.assertIn('新增 Issue 1', text)
         self.assertIn('other repo failed', text)
 
 

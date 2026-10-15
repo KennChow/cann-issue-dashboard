@@ -38,4 +38,11 @@
 
 ## 发布验证
 
-GitHub 仓库已推送，Pages build_type=workflow 已启用。实际 Actions 运行与公开页面验证结果将在成功后追加。
+- 手动 workflow_dispatch：[运行 38677831678](https://github.com/KennChow/cann-issue-dashboard/actions/runs/38677831678)，最终 completed / success。
+- 云端依赖安装、23 项测试、真实增量采集、数据校验、生产构建、数据提交、Pages artifact 上传及部署全部成功。
+- [公开首页](https://kennchow.github.io/cann-issue-dashboard/) HTTP 200；data/dashboard.json HTTP 200，890 条公共 Issue，4,483,784 字节。
+- 公开页面浏览器实测：总览渲染正常；超期统计下钻成功；Hash 筛选刷新保持 overdue；详情弹层打开成功；筛选 HTML 下载成功；JavaScript 运行错误 0。
+- 本地已拉取 Actions 生成的数据提交 `3c36e74`，重新执行 validate.py 一致性校验通过。
+- Cron 在已推送工作流中为 `0 1,3,6,8,10,12 * * *`。已验证手动运行整条链路；未来 schedule 的实际触发尚需随时间观测，不承诺准点。
+
+最初一次手动运行因本地推送 HTTP 400、远端版本未更新而主动取消；使用 HTTP/1.1 和更大 postBuffer 推送成功后重新触发，上述成功运行使用正确版本。首次部署完成前站点曾返回 404，成功发布后已验证消除。

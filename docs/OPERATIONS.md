@@ -10,6 +10,7 @@
 - Pages 404：检查 Source 为 GitHub Actions、成功部署的 environment；确保访问仓库子路径的尾部 `/`。Hash 路由刷新不会请求服务器路径。
 - Actions push 失败：检查 workflow permissions / branch protection；自动提交使用 GITHUB_TOKEN contents:write，禁止并行手工修改生成 JSON。
 - Actions 定时未准时：schedule 不提供准点保证，查看实际 run 时间；手动 Run workflow 可补扫。
+- 服务器定时触发：部署及管理方式见 [服务器定时任务](SERVER_SCHEDULER.md)，运行事件为 `workflow_dispatch`。
 - 删除 `.cache/reports.json` 可重建缓存。它不是事实数据。
 - 仓库迁移/删除：周全量将以当前仓库返回集合为准，旧对象仍可在 Git 历史找到；不会把消失对象伪造为 Closed。
 

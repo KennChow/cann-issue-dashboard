@@ -148,5 +148,20 @@ class MembershipTests(unittest.TestCase):
         record=collect_repo(Fake(),'cann/ge',{},CONFIG,NOW,True)
         self.assertEqual(record['issues'][0]['reply_status'],'replied')
 
+class BulkTests(unittest.TestCase):
+    def test_bulk_comments_exclude_unknown_targets_and_validate_identity(self):
+        class Fake:
+            def pages(self,path,**params):
+                if path.endswith('/issues'):
+                    return [raw(1,id=n,number=str(n),comments=1 if n==1 else 0) for n in range(1,22)]
+                if path.endswith('/collaborators'):return [{'id':99,'login':'member','access_level':15}]
+                if path.endswith('/issues/comments'):
+                    return [{'id':101,'target':{'issue':{'id':1,'number':1}},'body':'Public response','user':{'login':'member'},'created_at':NOW.isoformat()}, {'id':102,'target':{'issue':{'id':999,'number':999}},'body':'private-content-must-not-be-published','user':{'login':'member'},'created_at':NOW.isoformat()}]
+                raise AssertionError('Unexpected per-issue request')
+        result=collect_repo(Fake(),'cann/ge',{},CONFIG,NOW,True)
+        self.assertEqual(result['issues'][0]['reply_status'],'replied')
+        self.assertNotIn('private-content-must-not-be-published',json.dumps(result))
+        self.assertEqual(len(result['issues']),21)
+
 if __name__ == '__main__':
     unittest.main()

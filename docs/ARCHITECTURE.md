@@ -53,3 +53,7 @@ index.ndjson 当前为单文件，变更后需下载该轻量索引全量；并�
 ## 导出
 
 大屏复制当前 DOM 的 SVG 图表和 CSS，移除脚本及交互控件。筛选列表从全部过滤结果构建转义后的 HTML，跨越所有分页；详情包含描述、评论、观测及所有报告。导出 CSP 禁止脚本和网络请求（图片除外），不包含访问凭据。外部头像需要联网，文字、表格、SVG 和样式离线可用。
+
+## 批量评论优化
+
+依据[官方仓库评论接口文档](https://docs.gitcode.com/docs/apis/get-api-v-5-repos-owner-repo-issues-comments/)，实测 ge `/issues/comments` 返回 total_count=1428，分页可获取全部仓库 Issue 评论。全量且超过 20 条 Issue 时优先批量查询，按 target.issue.id 与 number 双重核对归属，只保留公共 Issue 的评论；评论数量不吻合或批量接口失败时退回逐条接口与缓存。增量扫描继续复用未变评论，不重复下载全仓评论。

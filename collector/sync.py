@@ -54,9 +54,34 @@ def collect_repo(client, repo, old, config, now, full=False, cache_dir=None):
         member_complete = True
     except SyncError as exc:
         warnings.append('成员身份: ' + str(exc))
+    bulk_results = {}
+    if full and len(raw) > 20:
+        try:
+            all_comments = client.pages(repo + '/issues/comments', sort='created', direction='asc')
+            public_ids = {str(r['id']): str(r['number']) for r in raw}
+            grouped = {number: [] for number in public_ids.values()}
+            for comment in all_comments:
+                target = (comment.get('target') or {}).get('issue') or {}
+                target_id = str(target.get('id'))
+                if target_id not in public_ids:
+                    continue  # Never retain comments belonging to excluded/non-public Issues.
+                number = str(target.get('number'))
+                if number != public_ids[target_id]:
+                    raise SyncError('Bulk comment target identity mismatch')
+                grouped[number].append(comment)
+            for raw_issue in raw:
+                number = str(raw_issue['number'])
+                expected = raw_issue.get('comments')
+                if expected is None or len(grouped[number]) == int(expected):
+                    bulk_results[repo + '#' + number] = comments(grouped[number])
+            print(repo, 'bulk comments', len(all_comments), 'validated for', len(bulk_results), 'public issues', flush=True)
+        except (SyncError, ValueError, TypeError, KeyError):
+            print(repo, 'bulk comments unavailable; falling back to per-issue cache/API', flush=True)
     def fetch_comments(raw_issue):
         identity = repo + '#' + str(raw_issue.get('number'))
         before = old_rows.get(identity)
+        if identity in bulk_results:
+            return identity, (bulk_results[identity], None)
         if before and before['updated_at'] == raw_issue.get('updated_at') and before.get('comment_count') == raw_issue.get('comments') and before.get('comments_complete') and not full:
             return identity, (before['comments'], None)
         if raw_issue.get('comments') == 0:

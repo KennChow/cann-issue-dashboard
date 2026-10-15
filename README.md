@@ -50,7 +50,7 @@ npm run preview
 4. Actions → **Sync and deploy dashboard** → Run workflow；可勾选 `full`。
 5. Pages URL 为 `https://<owner>.github.io/<repo>/`。Vite 使用相对资源路径；Hash 路由在子目录刷新无需 404 回退。
 
-工作流 Cron：`0 1,2,3,4,6,7,8,9,10,11,12,13 * * 1-6`，对应北京时间周一至周六 09、10、11、12、14、15、16、17、18、19、20、21 点（周日不定时触发）。GitHub 调度可能延迟，页面使用实际采集时间。公开仓库长期无活动时 GitHub 可能暂停 schedule，请检查 Actions 状态。
+工作流 Cron：`13 1,2,3,4,6,7,8,9,10,11,12,13 * * 1-6`，对应北京时间周一至周六 09:13、10:13、11:13、12:13、14:13、15:13、16:13、17:13、18:13、19:13、20:13、21:13（周日不定时触发）。GitHub 调度可能延迟，页面使用实际采集时间。公开仓库长期无活动时 GitHub 可能暂停 schedule，请检查 Actions 状态。
 
 采集构建 job 仅有 contents:write；部署 job 仅有 pages:write、id-token:write。所有发布执行使用同一 concurrency group，避免并发数据提交。数据提交带 `[skip ci]` 且数据路径不触发 push 工作流。PR 检查不接触令牌、不部署。
 

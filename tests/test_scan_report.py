@@ -6,7 +6,7 @@ from collector.scan_report import render, send_report
 
 def item(number):
     return {'id': f'cann/ge#{number}', 'repo': 'cann/ge', 'state': 'open',
-            'title': '测试问题', 'created_at': '2026-10-15T01:00:00Z',
+            'title': '测试问题', 'author': {'login': 'test-author'}, 'created_at': '2026-10-15T01:00:00Z',
             'url': f'https://gitcode.com/cann/ge/issues/{number}',
             'comments': [{'id': str(number)}], 'reports': []}
 
@@ -25,6 +25,7 @@ class ReportTests(unittest.TestCase):
         text = render(before, after)
         self.assertIn('新增 Issue 1 / 更新 1 / 新评论 1', text)
         self.assertIn('https://gitcode.com/cann/ge/issues/2', text)
+        self.assertIn('创建：2026-10-15 09:00（北京时间） | 提交人：test-author', text)
         self.assertNotIn('https://gitcode.com/cann/ge/issues/1', text)
         self.assertIn('10:00（北京时间）', text)
         self.assertIn('共 2 / 待处理 2', text)

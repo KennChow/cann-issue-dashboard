@@ -54,7 +54,12 @@ def render(previous, current, outcome='success'):
     for item in sorted(new, key=lambda i: (i['repo'], i['created_at'], i['id'])):
         title = ' '.join(item['title'].split())
         state = '待处理' if item['state'] == 'open' else '已关闭'
-        lines += [f'- {item["id"]} [{state}] {title}', f'  {item["url"]}']
+        created = datetime.fromisoformat(item['created_at'].replace('Z', '+00:00'))
+        created = created.astimezone(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
+        author = ' '.join(((item.get('author') or {}).get('login') or '未知').split())
+        lines += [f'- {item["id"]} [{state}] {title}',
+                  f'  创建：{created}（北京时间） | 提交人：{author}',
+                  f'  {item["url"]}']
     errors = current.get('errors', [])
     if outcome != 'success' or errors:
         lines += ['', '扫描异常：部分数据为上次保留值。']

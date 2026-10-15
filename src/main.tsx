@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Data, Stats } from "./types";
 import { fmt, short, params, go, memberLabel } from "./shared";
-import { Badges } from "./Badges";
 import { Chart, Bars, Lines } from "./Charts";
 import { IssueList } from "./IssueList";
 import { Detail } from "./Detail";
@@ -113,17 +112,6 @@ function App() {
         i.metrics.age_hours <= b.max,
     ).length,
   }));
-  const risky = scope
-    .filter(
-      (i) =>
-        i.state === "open" &&
-        (i.metrics.overdue ||
-          i.metrics.due_soon ||
-          i.metrics.unassigned ||
-          i.metrics.no_internal_assignee ||
-          i.metrics.unreplied),
-    )
-    .sort((a, b) => b.metrics.age_hours - a.metrics.age_hours);
   return (
     <>
       <header>
@@ -371,29 +359,31 @@ function App() {
             <section className="panel">
               <div className="toolbar">
                 <h2>责任人名下 Issue 数量</h2>
-                <select
-                  aria-label="责任人类型"
-                  value={ownerRole}
-                  onChange={(e) => {
-                    e.target.value
-                      ? p.set("owner_role", e.target.value)
-                      : p.delete("owner_role");
-                    go(Object.fromEntries(p), "dashboard");
-                  }}
-                >
-                  <option value="">全部</option>
-                  <option value="internal">内部责任人</option>
-                  <option value="external">外部开发者</option>
-                </select>
-                <select
-                  aria-label="责任人排序"
-                  value={ownerSort}
-                  onChange={(e) => setOwnerSort(e.target.value)}
-                >
-                  <option value="open">按 Open 数量</option>
-                  <option value="overdue">按超期数量</option>
-                  <option value="due_soon">按即将超期</option>
-                </select>
+                <div className="owner-controls">
+                  <select
+                    aria-label="责任人类型"
+                    value={ownerRole}
+                    onChange={(e) => {
+                      e.target.value
+                        ? p.set("owner_role", e.target.value)
+                        : p.delete("owner_role");
+                      go(Object.fromEntries(p), "dashboard");
+                    }}
+                  >
+                    <option value="">全部</option>
+                    <option value="internal">内部责任人</option>
+                    <option value="external">外部开发者</option>
+                  </select>
+                  <select
+                    aria-label="责任人排序"
+                    value={ownerSort}
+                    onChange={(e) => setOwnerSort(e.target.value)}
+                  >
+                    <option value="open">按 Open 数量</option>
+                    <option value="overdue">按超期数量</option>
+                    <option value="due_soon">按即将超期</option>
+                  </select>
+                </div>
               </div>
               <p className="muted">
                 每条 Open Issue
@@ -470,50 +460,6 @@ function App() {
                     </button>
                   ))}
               </div>
-            </section>
-            <section className="panel">
-              <div className="toolbar">
-                <h2>
-                  <span className="red">●</span> 优先跟进 / 风险队列
-                </h2>
-                <span className="muted">按等待时长排序 · 前 12 项</span>
-              </div>
-              <div className="risk-grid">
-                {risky.slice(0, 12).map((i) => (
-                  <article className="risk" key={i.id}>
-                    <div className="toolbar">
-                      <span className="muted">
-                        {short(i.repo)} #{i.number}
-                      </span>
-                      <span className={i.metrics.overdue ? "red" : "amber"}>
-                        {i.metrics.overdue
-                          ? "高风险"
-                          : i.metrics.due_soon
-                            ? "中风险"
-                            : "待跟进"}
-                      </span>
-                    </div>
-                    <button
-                      className="text title"
-                      onClick={() => go({ id: i.id })}
-                    >
-                      {i.title}
-                    </button>
-                    <Badges i={i} />
-                    <p className="muted">
-                      {i.assignees.map((a) => a.login).join(", ") || "未分配"} ·
-                      等待 {(i.metrics.age_hours / 24).toFixed(1)} 天
-                    </p>
-                    <small>
-                      {fmt(i.created_at)} ·{" "}
-                      <a href={i.url} target="_blank" rel="noreferrer">
-                        GitCode ↗
-                      </a>
-                    </small>
-                  </article>
-                ))}
-              </div>
-              {!risky.length && <p className="empty">当前没有风险 Issue</p>}
             </section>
           </>
         )}

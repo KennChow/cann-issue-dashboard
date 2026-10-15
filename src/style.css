@@ -351,8 +351,6 @@ td small {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  max-height: 520px;
-  overflow: auto;
 }
 .owner {
   text-align: left;
@@ -401,29 +399,6 @@ td small {
   font-size: 10px;
   display: block;
   margin-top: 8px;
-}
-.risk-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-.risk {
-  padding: 15px;
-  border: 1px solid #2b354b;
-  border-left: 2px solid #d58d64;
-  border-radius: 6px;
-  background: #0c1526;
-}
-.risk .toolbar {
-  font-size: 10px;
-  margin-bottom: 8px;
-}
-.risk small {
-  font-size: 10px;
-  color: #8698b3;
-}
-.risk .title {
-  min-height: 42px;
 }
 .filters {
   display: grid;
@@ -567,8 +542,7 @@ footer {
   .cards {
     grid-template-columns: repeat(4, 1fr);
   }
-  .owner-grid,
-  .risk-grid {
+  .owner-grid {
     grid-template-columns: repeat(2, 1fr);
   }
   .filters {
@@ -612,8 +586,7 @@ footer {
     grid-template-columns: repeat(2, 1fr);
   }
   .two,
-  .owner-grid,
-  .risk-grid {
+  .owner-grid {
     grid-template-columns: 1fr;
   }
   .filters {
@@ -647,4 +620,12 @@ footer {
   .three {
     grid-template-columns: 1fr;
   }
+}
+
+.owner-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-left: auto;
 }

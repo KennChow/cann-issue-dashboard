@@ -1,0 +1,27 @@
+name: Schedule probe
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Record trigger
+        env:
+          CRON_EXPRESSION: ${{ github.event.schedule }}
+        run: |
+          {
+            printf 'observed_at_utc=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            printf 'event=%s\n' "$GITHUB_EVENT_NAME"
+            printf 'schedule=%s\n' "${CRON_EXPRESSION:-manual}"
+            printf 'actor=%s\n' "$GITHUB_ACTOR"
+            printf 'ref=%s\n' "$GITHUB_REF"
+            printf 'sha=%s\n' "$GITHUB_SHA"
+            printf 'run=%s/%s/actions/runs/%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

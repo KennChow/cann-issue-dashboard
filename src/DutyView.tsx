@@ -53,73 +53,6 @@ export function Duty() {
 
   return (
     <div className="duty-view">
-      <section className="panel">
-        <h2>GE 责任田分工表</h2>
-        <p className="muted">
-          按模块查看目录分工，或在下方输入路径查找田主和 Committer。
-        </p>
-        {!data ? (
-          error ? (
-            <button onClick={() => setAttempt(attempt + 1)}>重新加载</button>
-          ) : (
-            <p role="status">正在加载责任田分工表…</p>
-          )
-        ) : (
-          <>
-            <p className="muted">
-              {geFields(data).length} 个责任田 · {data.files?.length || 0}{" "}
-              个索引文件
-            </p>
-            {!data.files && (
-              <p className="notice amber">
-                当前快照未包含文件索引，仅支持目录规则和责任田查询。
-              </p>
-            )}
-            <div className="table-wrap">
-              <table className="duty-table">
-                <thead>
-                  <tr>
-                    <th>模块</th>
-                    <th>责任田</th>
-                    <th>田主</th>
-                    <th>Committer</th>
-                    <th>覆盖路径</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {geFields(data).map((f, i) => (
-                    <tr key={i}>
-                      <td>{f.module}</td>
-                      <td>{f.sub_field}</td>
-                      <td>{f.owner.name}</td>
-                      <td>{f.committer.name}</td>
-                      <td>
-                        {f.paths
-                          .filter((p) => p.repo === "ge")
-                          .map((p, j) => (
-                            <code key={j}>
-                              {p.whole_repo ? "整个 GE 仓库" : p.prefix}
-                            </code>
-                          ))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p>
-              其他部分（兜底）：田主{" "}
-              <strong>{data.repo_fallbacks.ge.owner.name}</strong> / Committer{" "}
-              <strong>{data.repo_fallbacks.ge.committer.name}</strong>
-            </p>
-          </>
-        )}
-        {error && (
-          <p className="notice red" role="alert">
-            {error}
-          </p>
-        )}
-      </section>
       {data && (
         <section className="panel duty-search">
           <h2>查找田主与 Committer</h2>
@@ -189,6 +122,73 @@ export function Duty() {
           )}
         </section>
       )}
+      <section className="panel">
+        <h2>GE 责任田分工表</h2>
+        <p className="muted">
+          按模块查看目录分工，或在上方输入路径查找田主和 Committer。
+        </p>
+        {!data ? (
+          error ? (
+            <button onClick={() => setAttempt(attempt + 1)}>重新加载</button>
+          ) : (
+            <p role="status">正在加载责任田分工表…</p>
+          )
+        ) : (
+          <>
+            <p className="muted">
+              {geFields(data).length} 个责任田 · {data.files?.length || 0}{" "}
+              个索引文件
+            </p>
+            {!data.files && (
+              <p className="notice amber">
+                当前快照未包含文件索引，仅支持目录规则和责任田查询。
+              </p>
+            )}
+            <div className="table-wrap">
+              <table className="duty-table">
+                <thead>
+                  <tr>
+                    <th>模块</th>
+                    <th>责任田</th>
+                    <th>田主</th>
+                    <th>Committer</th>
+                    <th>覆盖路径</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {geFields(data).map((f, i) => (
+                    <tr key={i}>
+                      <td>{f.module}</td>
+                      <td>{f.sub_field}</td>
+                      <td>{f.owner.name}</td>
+                      <td>{f.committer.name}</td>
+                      <td>
+                        {f.paths
+                          .filter((p) => p.repo === "ge")
+                          .map((p, j) => (
+                            <code key={j}>
+                              {p.whole_repo ? "整个 GE 仓库" : p.prefix}
+                            </code>
+                          ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p>
+              其他部分（兜底）：田主{" "}
+              <strong>{data.repo_fallbacks.ge.owner.name}</strong> / Committer{" "}
+              <strong>{data.repo_fallbacks.ge.committer.name}</strong>
+            </p>
+          </>
+        )}
+        {error && (
+          <p className="notice red" role="alert">
+            {error}
+          </p>
+        )}
+      </section>
     </div>
   );
 }

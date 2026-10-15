@@ -470,10 +470,7 @@ function App() {
                       </div>
                       <small>
                         {Object.entries(o.repos)
-                          .map(
-                            ([r, n]) =>
-                              `${short(r)} ${n} · ${memberLabel[o.repo_roles?.[r]] || memberLabel.unknown}`,
-                          )
+                          .map(([r, n]) => `${short(r)} ${n}`)
                           .join(" / ")}
                       </small>
                     </button>

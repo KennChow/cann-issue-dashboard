@@ -54,7 +54,7 @@ export function Bars({
           {keys.map((k) => (
             <linearGradient
               key={k.key}
-              id={`bar-grad-${k.key}`}
+              id={`bar-grad-${k.key}-${k.color.slice(1)}`}
               x1="0"
               y1="0"
               x2="0"
@@ -92,7 +92,7 @@ export function Bars({
             key={k.key}
             dataKey={k.key}
             name={k.name}
-            fill={`url(#bar-grad-${k.key})`}
+            fill={`url(#bar-grad-${k.key}-${k.color.slice(1)})`}
             stroke={k.color}
             strokeWidth={1}
             radius={[6, 6, 0, 0]}
@@ -107,9 +107,11 @@ export function Bars({
 export function Lines({
   data,
   keys,
+  percent = false,
 }: {
   data: Record<string, unknown>[];
-  keys: { key: string; name: string; color: string }[];
+  keys: { key: string; name: string; color: string; width?: number }[];
+  percent?: boolean;
 }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -127,8 +129,18 @@ export function Lines({
           fontSize={11}
           tickLine={false}
           axisLine={false}
+          allowDecimals={!percent ? false : undefined}
+          domain={percent ? [0, 100] : undefined}
+          tickFormatter={percent ? (v: number) => `${v}%` : undefined}
         />
-        <Tooltip contentStyle={tooltipStyle} />
+        <Tooltip
+          contentStyle={tooltipStyle}
+          formatter={
+            percent
+              ? (v: unknown) => (v === null || v === undefined ? "—" : `${v}%`)
+              : undefined
+          }
+        />
         <Legend iconType="plainline" wrapperStyle={{ fontSize: "12px", paddingTop: "6px" }} />
         {keys.map((k) => (
           <Line
@@ -138,7 +150,8 @@ export function Lines({
             dataKey={k.key}
             name={k.name}
             stroke={k.color}
-            strokeWidth={2.5}
+            strokeWidth={k.width ?? 2.5}
+            connectNulls
             dot={data.length < 3 ? { r: 4, fill: k.color } : false}
             activeDot={{ r: 5, strokeWidth: 0, fill: k.color }}
           />

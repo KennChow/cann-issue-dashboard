@@ -16,7 +16,16 @@ import {
   filterIssuesByDateRange,
   computeDynamicStats,
   computeOfficialSla,
+  toBeijingDateStr,
 } from "./sla";
+import {
+  GRANULARITY_LABELS,
+  autoGranularity,
+  closureRateTrend,
+  createdClosedTrend,
+  earliestIssueDay,
+  type Granularity,
+} from "./trends";
 
 const ExportIcon = () => (
   <svg
@@ -78,6 +87,16 @@ const cards: {
     filter: { state: "all" },
   },
 ];
+
+const TREND_PRESETS: { key: string; label: string; days?: number }[] = [
+  { key: "1m", label: "近 30 天", days: 30 },
+  { key: "3m", label: "近 90 天", days: 90 },
+  { key: "6m", label: "近半年", days: 182 },
+  { key: "1y", label: "近一年", days: 365 },
+  { key: "all", label: "全部" },
+  { key: "custom", label: "自定义" },
+];
+const REPO_COLORS = ["#50a9ff", "#38cdb3", "#fbbf24", "#fb7185", "#a78bfa", "#f472b6"];
 
 function App() {
   const [data, setData] = useState<Data>();
@@ -173,6 +192,28 @@ function App() {
     }
     go(Object.fromEntries(next), "dashboard");
   };
+
+  const repoNames = Object.keys(data.repositories);
+  const trendRange = p.get("t_range") || "3m";
+  const trendTo0 = toBeijingDateStr(data.generated_at);
+  const trendPreset = TREND_PRESETS.find((t) => t.key === trendRange);
+  const trendEarliest = earliestIssueDay(all) || trendTo0;
+  let trendFrom =
+    trendRange === "custom"
+      ? p.get("t_from") || trendEarliest
+      : trendPreset?.days
+        ? toBeijingDateStr(
+            new Date(
+              Date.parse(data.generated_at) - (trendPreset.days - 1) * 86400000,
+            ).toISOString(),
+          )
+        : trendEarliest;
+  const trendTo = (trendRange === "custom" && p.get("t_to")) || trendTo0;
+  if (trendFrom < trendEarliest) trendFrom = trendEarliest;
+  if (trendFrom > trendTo) trendFrom = trendTo;
+  const trendGran =
+    (p.get("t_gran") as Granularity | null) ||
+    autoGranularity(trendFrom, trendTo);
 
   const ageBins = [
     { name: "≤3 天", min: 0, max: 72 },
@@ -308,10 +349,7 @@ function App() {
             <section className="panel sla-section overview-panel">
             <div className="toolbar dashboard-bar">
               <div>
-                <h2>
-                  全局态势 · CANN 官网 SLA 核心指标{" "}
-                  <span className="muted">/ OPERATIONS</span>
-                </h2>
+                <h2>全局数据概览</h2>
                 <p className="muted">
                   统计口径：剔除中国大陆法定节假日及周末，首次响应排除自处理（
                   {sla.excludedSelfProcessed} 项）及里程碑 Issue。
@@ -391,35 +429,12 @@ function App() {
                 </select>
               </div>
             </div>
-            <div className="cards overview-cards">
-              {cards.filter((c) => c.key !== "closure_rate").map((c) => (
-                <button
-                  key={c.key}
-                  className={`metric ${c.color}`}
-                  onClick={() =>
-                    go({
-                      ...c.filter,
-                      ...(repo ? { repo } : {}),
-                      ...dateDrillParams,
-                    })
-                  }
-                >
-                  <span>{c.name}</span>
-                  <strong>
-                    {stat[c.key] ?? "—"}
-                    {c.key === "closure_rate" && stat[c.key] !== null
-                      ? "%"
-                      : ""}
-                  </strong>
-                  <small>查看 Issue ↗</small>
-                </button>
-              ))}
-            </div>
             <p className="muted overview-period">
               当前统计周期：<strong>{activeRange.label}</strong>（共 {scope.length}{" "}
               条 Issue） · 回复身份无法确认：{stat.unknown} 项（不计入未回复） ·
               快照计算于 {fmt(data.generated_at)}。
             </p>
+            <h3 className="overview-group-title">SLA 核心指标</h3>
               <div className="sla-cards">
                 <button
                   type="button"
@@ -433,7 +448,7 @@ function App() {
                   }
                 >
                   <div className="sla-card-head">
-                    <span>Issue 闭环率（官方口径）</span>
+                    <span>Issue 闭环率</span>
                     <em className={`tag ${sla.closureColor}`}>
                       {sla.closureRate === null
                         ? "无数据"
@@ -465,7 +480,7 @@ function App() {
                   }
                 >
                   <div className="sla-card-head">
-                    <span>首次响应达标率（≤24h 工作日）</span>
+                    <span>首次响应达标率</span>
                     <em className={`tag ${sla.firstRespColor}`}>
                       {sla.firstRespQualifiedRate === null
                         ? "无数据"
@@ -482,7 +497,7 @@ function App() {
                       : "—"}
                   </strong>
                   <small>
-                    达标 {sla.firstRespQualifiedNum} / 有效总数{" "}
+                    ≤24h 工作日 · 达标 {sla.firstRespQualifiedNum} / {" "}
                     {sla.respEligibleTotal} · 查看达标 ↗
                   </small>
                 </button>
@@ -522,7 +537,7 @@ function App() {
                   }
                 >
                   <div className="sla-card-head">
-                    <span>开启未响应超时数 / 总数</span>
+                    <span>开启未响应超时 / 总数</span>
                     <em className="tag">Open 未响应</em>
                   </div>
                   <strong>
@@ -559,10 +574,32 @@ function App() {
                 </div>
               </div>
 
-              <details className="sla-rules-box" open>
-                <summary>
-                  📖 SLA 统计规则说明
-                </summary>
+            <h3 className="overview-group-title">Issue 处理状态</h3>
+            <div className="status-strip">
+              {cards
+                .filter((c) => c.key !== "closure_rate")
+                .map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    className={`status-item ${c.color}`}
+                    onClick={() =>
+                      go({
+                        ...c.filter,
+                        ...(repo ? { repo } : {}),
+                        ...dateDrillParams,
+                      })
+                    }
+                  >
+                    <span>{c.name}</span>
+                    <strong>{stat[c.key] ?? "—"}</strong>
+                    <small>查看 Issue ↗</small>
+                  </button>
+                ))}
+            </div>
+
+              <details className="sla-rules-box">
+                <summary>📖 统计规则说明</summary>
                 <div className="sla-rules-grid">
                   <div>
                     <h4>1. Issue 闭环率 & 平均闭环时长</h4>
@@ -617,7 +654,7 @@ function App() {
             </section>
 
             <div className="grid three">
-              <Chart title="仓库压力 / Open 与超期">
+              <Chart title="Issue 开启和关闭数量">
                 <Bars
                   data={Object.entries(data.repositories).map(([name, r]) => {
                     const rIssues = hasDateFilter
@@ -633,23 +670,23 @@ function App() {
                     return {
                       name: short(name),
                       open: rStats.open,
-                      overdue: rStats.overdue,
+                      closed: rStats.closed,
                     };
                   })}
                   keys={[
-                    { key: "open", name: "Open", color: "#50a9ff" },
-                    { key: "overdue", name: "已超期", color: "#fb7185" },
+                    { key: "open", name: "开启", color: "#50a9ff" },
+                    { key: "closed", name: "已关闭", color: "#38cdb3" },
                   ]}
                 />
               </Chart>
-              <Chart title="Open Issue 年龄分布">
+              <Chart title="未关闭 Issue 时长">
                 <Bars
                   data={ageBins}
                   keys={[{ key: "count", name: "Issue 数", color: "#38cdb3" }]}
                 />
               </Chart>
               <Chart
-                title="Open 回复状态分布"
+                title="未关闭 Issue 回复状态"
                 note="维护者回复独立于指派和超期状态，三项按回复状态互斥。"
               >
                 <Bars
@@ -792,31 +829,130 @@ function App() {
                 </table>
               </div>
             </section>
-            <div className="grid two">
-              <Chart
-                title="创建与关闭 / 最近 60 个活动日"
-                note="来自真实 created_at / closed_at；关闭为当前 Closed Issue 的最终关闭日期，不等同全部历史关闭事件。"
-              >
-                <Lines
-                  data={data.activity.slice(-60)}
-                  keys={[
-                    { key: "created", name: "创建", color: "#50a9ff" },
-                    { key: "closed", name: "关闭", color: "#38cdb3" },
-                  ]}
-                />
-              </Chart>
-              <Chart
-                title="累计闭环率趋势"
-                note="每天最后一次完整快照，最多保留 365 天；首次采集只有一个真实观测点。"
-              >
-                <Lines
-                  data={data.snapshots}
-                  keys={[
-                    { key: "closure_rate", name: "闭环率 %", color: "#a78bfa" },
-                  ]}
-                />
-              </Chart>
-            </div>
+            <section className="panel trend-panel">
+              <div className="toolbar trend-bar">
+                <h2>
+                  Issue 趋势{" "}
+                  <span className="muted trend-range-label">
+                    {trendFrom} ~ {trendTo} · {GRANULARITY_LABELS[trendGran]}
+                  </span>
+                </h2>
+                <div className="dashboard-filters" data-no-export>
+                  <div
+                    className="time-range-pills"
+                    role="group"
+                    aria-label="趋势统计区间"
+                  >
+                    {TREND_PRESETS.map((tp) => (
+                      <button
+                        key={tp.key}
+                        type="button"
+                        className={`chip-btn ${trendRange === tp.key ? "active" : ""}`}
+                        onClick={() =>
+                          setDashboardParams(
+                            tp.key === "custom"
+                              ? {
+                                  t_range: "custom",
+                                  t_from: trendFrom,
+                                  t_to: trendTo,
+                                }
+                              : { t_range: tp.key, t_from: "", t_to: "" },
+                          )
+                        }
+                      >
+                        {tp.label}
+                      </button>
+                    ))}
+                  </div>
+                  {trendRange === "custom" && (
+                    <div className="custom-date-inline">
+                      <input
+                        type="date"
+                        aria-label="趋势起始日期"
+                        value={trendFrom}
+                        max={trendTo}
+                        onChange={(e) =>
+                          setDashboardParams({
+                            t_range: "custom",
+                            t_from: e.target.value,
+                          })
+                        }
+                      />
+                      <span className="muted">至</span>
+                      <input
+                        type="date"
+                        aria-label="趋势结束日期"
+                        value={trendTo}
+                        min={trendFrom}
+                        onChange={(e) =>
+                          setDashboardParams({
+                            t_range: "custom",
+                            t_to: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+                  <select
+                    aria-label="趋势统计粒度"
+                    value={p.get("t_gran") || ""}
+                    onChange={(e) =>
+                      setDashboardParams({ t_gran: e.target.value })
+                    }
+                  >
+                    <option value="">
+                      自动（{GRANULARITY_LABELS[autoGranularity(trendFrom, trendTo)]}）
+                    </option>
+                    <option value="day">按日</option>
+                    <option value="week">按周</option>
+                    <option value="month">按月</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid two">
+                <Chart
+                  title="Issue 创建与关闭趋势"
+                  note={`${repo ? short(repo) : "全部仓库"}；按北京时间 created_at / closed_at 统计，关闭为当前 Closed Issue 的最终关闭日期。`}
+                >
+                  <Lines
+                    data={createdClosedTrend(
+                      repo ? all.filter((i) => i.repo === repo) : all,
+                      trendFrom,
+                      trendTo,
+                      trendGran,
+                    )}
+                    keys={[
+                      { key: "created", name: "创建", color: "#50a9ff" },
+                      { key: "closed", name: "关闭", color: "#38cdb3" },
+                    ]}
+                  />
+                </Chart>
+                <Chart
+                  title="Issue 闭环率趋势"
+                  note="截至各时间点的累计闭环率 = 该时间点前创建且已关闭的 Issue ÷ 该时间点前创建的 Issue 总数；总体与分仓库对比。"
+                >
+                  <Lines
+                    percent
+                    data={closureRateTrend(
+                      all,
+                      repoNames,
+                      trendFrom,
+                      trendTo,
+                      trendGran,
+                    )}
+                    keys={[
+                      { key: "all", name: "总体", color: "#e2ecfc", width: 3 },
+                      ...repoNames.map((name, n) => ({
+                        key: name,
+                        name: short(name),
+                        color: REPO_COLORS[n % REPO_COLORS.length],
+                        width: 1.8,
+                      })),
+                    ]}
+                  />
+                </Chart>
+              </div>
+            </section>
             <section className="panel">
               <div className="toolbar">
                 <h2>

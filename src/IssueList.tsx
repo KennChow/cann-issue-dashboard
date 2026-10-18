@@ -138,7 +138,7 @@ export function IssueList({
       (!value("from") || day >= value("from")) &&
       (!value("to") || day <= value("to")) &&
       (!value("q") ||
-        `${i.title} #${i.number} ${i.author.login}`
+        `${i.title} #${i.number} ${i.author.login} ${i.assignees.map((a) => a.login).join(" ")}`
           .toLowerCase()
           .includes(value("q").toLowerCase()))
     );
@@ -182,16 +182,6 @@ export function IssueList({
       </label>
     );
   };
-
-  const authorCounts = new Map<string, number>();
-  for (const i of issues) {
-    if (i.author?.login) {
-      authorCounts.set(i.author.login, (authorCounts.get(i.author.login) || 0) + 1);
-    }
-  }
-  const sortedAuthors = Array.from(authorCounts.entries()).sort((a, b) =>
-    a[0].localeCompare(b[0]),
-  );
 
   const activeEntries = Object.keys(filterLabels).flatMap((k) => {
     const def = k === "state" ? "open" : "";
@@ -258,11 +248,11 @@ export function IssueList({
         </div>
         <div className="filters">
           <label className={`search ${value("q") ? "active-label" : ""}`}>
-            搜索标题 / 编号
+            搜索标题关键词 / 编号 / 提出人 / 责任人
             <div className="input-clear-wrap">
               <input
                 className={value("q") ? "active-filter" : ""}
-                placeholder="输入关键词、#168 或提出人"
+                placeholder="搜索标题关键词 / 编号 / 提出人 / 责任人..."
                 value={value("q")}
                 onChange={(e) => set("q", e.target.value)}
               />
@@ -284,36 +274,6 @@ export function IssueList({
               (r) => [r, short(r)] as [string, string],
             ),
           ])}
-          <label className={value("author") ? "active-label" : ""}>
-            按提出人
-            <div className="input-clear-wrap">
-              <input
-                aria-label="提出人"
-                list="author-options"
-                className={value("author") ? "active-filter" : ""}
-                placeholder={`全部提出人（${sortedAuthors.length}）`}
-                value={value("author")}
-                onChange={(e) => set("author", e.target.value.trim())}
-              />
-              {value("author") && (
-                <button
-                  type="button"
-                  className="input-clear"
-                  aria-label="清空提出人"
-                  onClick={() => set("author", "")}
-                >
-                  ×
-                </button>
-              )}
-            </div>
-            <datalist id="author-options">
-              {sortedAuthors.map(([a, n]) => (
-                <option key={a} value={a}>
-                  {`${n} 个 Issue`}
-                </option>
-              ))}
-            </datalist>
-          </label>
           {select("owner", "责任人", [
             ["", "全部责任人"],
             ["未分配", "未分配"],

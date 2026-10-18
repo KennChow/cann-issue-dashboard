@@ -135,7 +135,7 @@ test("workload cards label outsiders and drill down to unique ownership", async 
       name: `导出筛选结果 HTML（${target.stats.open} 项）`,
     }),
   ).toBeVisible();
-  await page.getByLabel("搜索标题 / 编号").fill("#125");
+  await page.getByLabel("搜索标题关键词 / 编号 / 提出人 / 责任人").fill("#125");
   await expect(page.locator("table.issues tbody tr")).toHaveCount(1);
 });
 
@@ -202,12 +202,30 @@ test("official SLA metrics, time range filter, nav order, and submitter filter",
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /全局态势 · CANN 官网 SLA 核心指标/ }),
+    page.getByRole("heading", { name: "全局数据概览" }),
   ).toBeVisible();
   await expect(page.getByText(/digital\.hicann\.cn/)).toHaveCount(0);
   const navLinks = await page.locator("header nav a").allInnerTexts();
   expect(navLinks.slice(0, 2)).toEqual(["运行总览", "Issue 工作台"]);
-  await expect(page.getByText(/SLA 统计规则说明/)).toBeVisible();
+  await expect(page.getByText("📖 统计规则说明")).toBeVisible();
+  await expect(page.locator("details.sla-rules-box")).not.toHaveAttribute("open", "");
+  for (const title of [
+    "Issue 开启和关闭数量",
+    "未关闭 Issue 时长",
+    "未关闭 Issue 回复状态",
+    "Issue 创建与关闭趋势",
+    "Issue 闭环率趋势",
+  ]) {
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  }
+  const trendPills = page.getByRole("group", { name: "趋势统计区间" });
+  await trendPills.getByRole("button", { name: "自定义" }).click();
+  await expect(page).toHaveURL(/t_range=custom/);
+  await page.getByLabel("趋势起始日期").fill("2026-03-01");
+  await expect(page).toHaveURL(/t_from=2026-03-01/);
+  await page.getByLabel("趋势统计粒度").selectOption("month");
+  await expect(page).toHaveURL(/t_gran=month/);
+  await expect(page.locator(".trend-range-label")).toContainText("2026-03-01");
   await page.getByRole("button", { name: "近两周" }).click();
   await expect(page).toHaveURL(/range=2w/);
   await page
@@ -216,17 +234,7 @@ test("official SLA metrics, time range filter, nav order, and submitter filter",
   await expect(page).toHaveURL(/first_resp=unqualified/);
   await expect(page.getByLabel("首次响应 SLA")).toHaveValue("unqualified");
   await page.getByRole("button", { name: "重置筛选" }).click();
-  const submitterInput = page.getByLabel("提出人", { exact: true });
-  await expect(submitterInput).toBeVisible();
-  const firstAuthorVal = await page
-    .locator("#author-options option")
-    .first()
-    .getAttribute("value");
-  expect(firstAuthorVal).toBeTruthy();
-  await submitterInput.fill(firstAuthorVal!);
-  await expect(page).toHaveURL(
-    new RegExp(`author=${encodeURIComponent(firstAuthorVal!)}`),
-  );
-  await page.getByRole("button", { name: "清空提出人" }).click();
-  await expect(page).not.toHaveURL(/author=/);
+  await expect(page.getByLabel("提出人", { exact: true })).toHaveCount(0);
+  const search = page.getByLabel("搜索标题关键词 / 编号 / 提出人 / 责任人");
+  await expect(search).toHaveAttribute("placeholder", /提出人\/责任人|提出人 \/ 责任人/);
 });

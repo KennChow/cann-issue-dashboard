@@ -119,11 +119,18 @@ MIT。此仓库独立实现，未复制参考项目业务代码。上游 Issue �
 
 每次同步（包括 --repo）都会刷新四仓成员来源。部分来源失败时保留上次名单供追溯，但过期来源不作为当前确认依据；无法排除内部身份的人员显示未知，不误标外部。
 
-## 扫描文字报告与邮件
+## 扫描巡检报告与邮件
 
-每次工作流扫描后生成 UTF-8 纯文字报告，包括全量及分仓统计、首次发现的 Issue（标题、状态、创建时间、提交人、链接）、已有 Issue 更新数、新增评论和 AI 报告数。新增以扫描前快照为基线，增量重叠窗口不会重复计数；首次运行无基线时会明确说明。失败报告注明保留数据及异常。手动触发和代码 push 扫描也发送报告；周日仅停用定时触发。
+每次工作流扫描后同时生成 UTF-8 纯文字报告（`.cache/scan-report.txt`）与内联样式 HTML 报告（`.cache/scan-report.html`），包含五大核心模块：
+1. **全局概况与官方 SLA 核心指标**：剔除中国大陆法定节假日及周末、排除自处理与里程碑 Issue 后的闭环率、24h 首次响应达标率、首响未达标数、Open 未响应超时数，以及平均首响/闭环时长。
+2. **分仓多维统计明细**：各仓总数、待处理、已关闭、闭环率、24h 首响达标率、已超期、即将超期、未获维护人回复、未分配内部维护人及全量合计。
+3. **本次扫描变更明细**：首次发现的新增 Issue、本次新闭环、本次指派变更、本次新增评论及本次新增 AI 诊断报告 Issue 列表与直达链接。
+4. **重点风险待办清单**：未分配内部维护人、即将超期（11–14 天）预警、开启未响应超时（>24h 工作日）的重点 Issue 明细及当前责任人。
+5. **内部维护人待办负载 Top 排行**：按待处理/超期/未回复数展示负载较高的内部维护人及仓库分布。
 
-报告保存在 `.cache/scan-report.txt`，Actions 的 `scan-report` artifact 保留 30 天。独立 mail job 发送邮件，邮件失败会使工作流显示失败，但不阻断看板部署。邮件失败后可通过 Re-run failed jobs 重试 mail job，使用同一份报告；SMTP 部分投递成功时重试可能重复送达。
+新增与变更以扫描前快照为基线，增量重叠窗口不会重复计数；首次运行无基线时会明确说明。失败报告注明保留数据及异常。手动触发和代码 push 扫描也发送报告；周日仅停用定时触发。
+
+报告保存在 `.cache/scan-report.txt` 与 `.cache/scan-report.html`，Actions 的 `scan-report` artifact 保留 30 天。独立 mail job 发送 `multipart/alternative`（HTML + 纯文本回退）邮件，邮件失败会使工作流显示失败，但不阻断看板部署。邮件失败后可通过 Re-run failed jobs 重试 mail job，使用同一份报告；SMTP 部分投递成功时重试可能重复送达。
 
 默认收件人为 `config/mail.json` 中的两个地址，可修改文件，或设置 Actions Variable `REPORT_RECIPIENTS`（英文逗号分隔）覆盖，无须改代码。
 
@@ -139,8 +146,6 @@ MIT。此仓库独立实现，未复制参考项目业务代码。上游 Issue �
 | Secret | SMTP_USERNAME | SMTP 登录账号 |
 | Secret | SMTP_PASSWORD | SMTP 密码或邮箱授权码 |
 
-未配置 SMTP 时报告仍生成、保存，mail job 明确失败。不会把 SMTP 密钥写入报告、前端或 Git 仓库。邮件为 `text/plain; charset=utf-8`。本地可用 `python3 -m collector.scan_report --previous <扫描前快照路径>` 生成报告，再设置上述环境变量并执行 `python3 -m collector.scan_report --send` 发送。
+未配置 SMTP 时报告仍生成、保存，mail job 明确失败。不会把 SMTP 密钥写入报告、前端或 Git 仓库。邮件为 `multipart/alternative`（包含 `text/plain; charset=utf-8` 与 `text/html; charset=utf-8`）。本地可用 `python3 -m collector.scan_report --previous <扫描前快照路径>` 生成报告，再设置上述环境变量并执行 `python3 -m collector.scan_report --send` 发送。
 
 SMTP 配置沿用 `KennChow/cann-radar-private` 的 `smtp_config.ini`：`[smtp] server/port/username/password` 分别映射到对应 SMTP Secrets，`[mail] from` 映射到 `SMTP_FROM`，使用 SSL。配置安全导入 Secrets，工作流不直接拉取私有仓库；源配置更新后需同步更新 Secrets。
-
-邮件采用简短的“全量概况 → 分仓数量 → 本次变化 → 新增 Issue 链接”结构，主题直接显示新增和更新数量；正常运行不重复列出扫描状态、每仓扫描时间和口径说明。

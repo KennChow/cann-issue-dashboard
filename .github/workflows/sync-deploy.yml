@@ -59,7 +59,7 @@ jobs:
           else
             python -m collector.sync
           fi
-      - name: Generate plain-text scan report
+      - name: Generate plain-text and HTML scan report
         id: report
         if: always() && steps.sync.outcome != 'skipped'
         env:
@@ -69,7 +69,9 @@ jobs:
         if: always() && steps.report.outcome == 'success'
         with:
           name: scan-report
-          path: .cache/scan-report.txt
+          path: |
+            .cache/scan-report.txt
+            .cache/scan-report.html
           include-hidden-files: true
           retention-days: 30
       - name: Validate publication payload

@@ -202,11 +202,12 @@ test("official SLA metrics, time range filter, nav order, and submitter filter",
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /CANN 官网 SLA 核心指标/ }),
+    page.getByRole("heading", { name: /全局态势 · CANN 官网 SLA 核心指标/ }),
   ).toBeVisible();
+  await expect(page.getByText(/digital\.hicann\.cn/)).toHaveCount(0);
   const navLinks = await page.locator("header nav a").allInnerTexts();
   expect(navLinks.slice(0, 2)).toEqual(["运行总览", "Issue 工作台"]);
-  await expect(page.getByText(/官方统计规则说明/)).toBeVisible();
+  await expect(page.getByText(/SLA 统计规则说明/)).toBeVisible();
   await page.getByRole("button", { name: "近两周" }).click();
   await expect(page).toHaveURL(/range=2w/);
   await page
@@ -215,15 +216,17 @@ test("official SLA metrics, time range filter, nav order, and submitter filter",
   await expect(page).toHaveURL(/first_resp=unqualified/);
   await expect(page.getByLabel("首次响应 SLA")).toHaveValue("unqualified");
   await page.getByRole("button", { name: "重置筛选" }).click();
-  const submitterSelect = page.getByLabel("提出人");
-  await expect(submitterSelect).toBeVisible();
-  const firstAuthorVal = await submitterSelect
-    .locator("option")
-    .nth(1)
+  const submitterInput = page.getByLabel("提出人", { exact: true });
+  await expect(submitterInput).toBeVisible();
+  const firstAuthorVal = await page
+    .locator("#author-options option")
+    .first()
     .getAttribute("value");
   expect(firstAuthorVal).toBeTruthy();
-  await submitterSelect.selectOption(firstAuthorVal!);
+  await submitterInput.fill(firstAuthorVal!);
   await expect(page).toHaveURL(
     new RegExp(`author=${encodeURIComponent(firstAuthorVal!)}`),
   );
+  await page.getByRole("button", { name: "清空提出人" }).click();
+  await expect(page).not.toHaveURL(/author=/);
 });

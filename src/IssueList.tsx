@@ -83,6 +83,10 @@ export function IssueList({
   };
 
   const rangePreset = value("range");
+  const authorQuery = value("author").toLowerCase();
+  const authorExact =
+    !!authorQuery &&
+    issues.some((i) => i.author?.login?.toLowerCase() === authorQuery);
   const filtered = issues.filter((i) => {
     const m = i.metrics;
     const day = toBeijingDateStr(i.created_at);
@@ -94,8 +98,10 @@ export function IssueList({
       (!value("workload_owner") ||
         i.workload_owner === value("workload_owner")) &&
       (!value("repo") || i.repo === value("repo")) &&
-      (!value("author") ||
-        i.author.login.toLowerCase().includes(value("author").toLowerCase())) &&
+      (!authorQuery ||
+        (authorExact
+          ? i.author.login.toLowerCase() === authorQuery
+          : i.author.login.toLowerCase().includes(authorQuery))) &&
       (!value("owner") ||
         (value("owner") === "未分配"
           ? !i.assignees.length
@@ -278,12 +284,36 @@ export function IssueList({
               (r) => [r, short(r)] as [string, string],
             ),
           ])}
-          {select("author", "提出人", [
-            ["", "全部提出人"],
-            ...sortedAuthors.map(
-              ([a, n]) => [a, `${a} (${n})`] as [string, string],
-            ),
-          ])}
+          <label className={value("author") ? "active-label" : ""}>
+            按提出人
+            <div className="input-clear-wrap">
+              <input
+                aria-label="提出人"
+                list="author-options"
+                className={value("author") ? "active-filter" : ""}
+                placeholder={`全部提出人（${sortedAuthors.length}）`}
+                value={value("author")}
+                onChange={(e) => set("author", e.target.value.trim())}
+              />
+              {value("author") && (
+                <button
+                  type="button"
+                  className="input-clear"
+                  aria-label="清空提出人"
+                  onClick={() => set("author", "")}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            <datalist id="author-options">
+              {sortedAuthors.map(([a, n]) => (
+                <option key={a} value={a}>
+                  {`${n} 个 Issue`}
+                </option>
+              ))}
+            </datalist>
+          </label>
           {select("owner", "责任人", [
             ["", "全部责任人"],
             ["未分配", "未分配"],

@@ -305,10 +305,18 @@ function App() {
           <IssueList issues={all} hash={hash} at={data.generated_at} />
         ) : (
           <>
+            <section className="panel sla-section overview-panel">
             <div className="toolbar dashboard-bar">
-              <h2>
-                全局态势 <span className="muted">/ OPERATIONS</span>
-              </h2>
+              <div>
+                <h2>
+                  全局态势 · CANN 官网 SLA 核心指标{" "}
+                  <span className="muted">/ OPERATIONS</span>
+                </h2>
+                <p className="muted">
+                  统计口径：剔除中国大陆法定节假日及周末，首次响应排除自处理（
+                  {sla.excludedSelfProcessed} 项）及里程碑 Issue。
+                </p>
+              </div>
               <div className="dashboard-filters" data-no-export>
                 <div className="time-range-pills" role="group" aria-label="统计时间范围">
                   {TIME_PRESETS.map((tp) => {
@@ -383,8 +391,8 @@ function App() {
                 </select>
               </div>
             </div>
-            <div className="cards">
-              {cards.map((c) => (
+            <div className="cards overview-cards">
+              {cards.filter((c) => c.key !== "closure_rate").map((c) => (
                 <button
                   key={c.key}
                   className={`metric ${c.color}`}
@@ -407,24 +415,11 @@ function App() {
                 </button>
               ))}
             </div>
-            <p className="muted">
+            <p className="muted overview-period">
               当前统计周期：<strong>{activeRange.label}</strong>（共 {scope.length}{" "}
               条 Issue） · 回复身份无法确认：{stat.unknown} 项（不计入未回复） ·
               快照计算于 {fmt(data.generated_at)}。
             </p>
-
-            <section className="panel sla-section">
-              <div className="toolbar">
-                <div>
-                  <h2>
-                    CANN 官网 SLA 核心指标 · 闭环率与首次响应达标率{" "}
-                    <span className="tag blue">对齐 digital.hicann.cn</span>
-                  </h2>
-                  <p className="muted">
-                    严格遵循 CANN 数字化协作平台（digital.hicann.cn）统计口径：剔除中国大陆法定节假日及周末，首次响应排除自处理（{sla.excludedSelfProcessed} 项）及里程碑 Issue。
-                  </p>
-                </div>
-              </div>
               <div className="sla-cards">
                 <button
                   type="button"
@@ -566,7 +561,7 @@ function App() {
 
               <details className="sla-rules-box" open>
                 <summary>
-                  📖 官方统计规则说明（对齐 CANN 数字化协作平台 digital.hicann.cn）
+                  📖 SLA 统计规则说明
                 </summary>
                 <div className="sla-rules-grid">
                   <div>

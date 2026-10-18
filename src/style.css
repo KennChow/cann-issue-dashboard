@@ -1154,6 +1154,22 @@ footer {
   flex-wrap: wrap;
   margin-bottom: 6px;
 }
+.overview-panel {
+  margin-top: 0;
+}
+.overview-panel .dashboard-bar {
+  align-items: flex-start;
+  gap: 14px;
+}
+.overview-panel .dashboard-bar p.muted {
+  margin: 0;
+}
+.overview-cards {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.overview-period {
+  margin: 12px 0 0;
+}
 .sla-cards {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -1187,6 +1203,9 @@ footer {
 }
 .sla-card-head em {
   font-style: normal;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 .fraction-inline {
   font-size: 16px !important;
@@ -1260,6 +1279,9 @@ footer {
 }
 
 @media (max-width: 1250px) {
+  .overview-cards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
   .sla-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1268,6 +1290,9 @@ footer {
   }
 }
 @media (max-width: 700px) {
+  .overview-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .sla-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

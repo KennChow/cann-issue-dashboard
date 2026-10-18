@@ -85,9 +85,20 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add public/data/dashboard.json
           if ! git diff --cached --quiet; then
-            git commit -m "data: refresh GitCode observations [skip ci]"
-            git pull --rebase origin main
-            git push
+            # 并发推送（本地调度器 / 其他运行）会与 dashboard.json 冲突导致整次部署被跳过；
+            # 以本次扫描的完整快照为准，基于最新 origin/main 重新提交并重试。
+            cp public/data/dashboard.json .cache/new-dashboard.json
+            for attempt in 1 2 3; do
+              git fetch origin main
+              git reset --hard origin/main
+              cp .cache/new-dashboard.json public/data/dashboard.json
+              git add public/data/dashboard.json
+              git diff --cached --quiet && exit 0
+              git commit -m "data: refresh GitCode observations [skip ci]"
+              git push origin HEAD:main && exit 0
+              sleep $((attempt * 5))
+            done
+            exit 1
           fi
       - uses: actions/upload-artifact@v4
         if: always()

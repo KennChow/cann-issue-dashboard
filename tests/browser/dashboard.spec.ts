@@ -197,3 +197,33 @@ test("unified internal directory shows provenance and exports HTML", async ({
       .filter({ has: page.locator("strong", { hasText: "Chang-an-HW" }) }),
   ).toHaveCount(0);
 });
+test("official SLA metrics, time range filter, nav order, and submitter filter", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: /CANN 官网 SLA 核心指标/ }),
+  ).toBeVisible();
+  const navLinks = await page.locator("header nav a").allInnerTexts();
+  expect(navLinks.slice(0, 2)).toEqual(["运行总览", "Issue 工作台"]);
+  await expect(page.getByText(/官方统计规则说明/)).toBeVisible();
+  await page.getByRole("button", { name: "近两周" }).click();
+  await expect(page).toHaveURL(/range=2w/);
+  await page
+    .getByRole("button", { name: /首次响应未达标数.*查看明细/ })
+    .click();
+  await expect(page).toHaveURL(/first_resp=unqualified/);
+  await expect(page.getByLabel("首次响应 SLA")).toHaveValue("unqualified");
+  await page.getByRole("button", { name: "重置筛选" }).click();
+  const submitterSelect = page.getByLabel("提出人");
+  await expect(submitterSelect).toBeVisible();
+  const firstAuthorVal = await submitterSelect
+    .locator("option")
+    .nth(1)
+    .getAttribute("value");
+  expect(firstAuthorVal).toBeTruthy();
+  await submitterSelect.selectOption(firstAuthorVal!);
+  await expect(page).toHaveURL(
+    new RegExp(`author=${encodeURIComponent(firstAuthorVal!)}`),
+  );
+});

@@ -2,18 +2,25 @@ import type { Issue } from "./types";
 import { fmt, short, go } from "./shared";
 import { Badges } from "./Badges";
 import { exportIssues } from "./export";
+import {
+  TIME_PRESETS,
+  resolveTimeRange,
+  evaluateIssueSla,
+  toBeijingDateStr,
+} from "./sla";
 
 const filterLabels: Record<string, string> = {
   q: "关键词",
   repo: "仓库",
+  author: "提出人",
   owner: "责任人",
   workload_owner: "工作量归属",
   workload_role: "归属人身份",
-  author: "创建者",
   state: "状态",
   assignment: "责任分配",
   internal: "内部责任人",
   reply: "维护者回复",
+  first_resp: "首次响应 SLA",
   risk: "期限预警",
   ai: "AI 分析",
   from: "创建自",
@@ -30,6 +37,12 @@ const filterValueLabels: Record<string, Record<string, string>> = {
     unknown: "无法确认",
   },
   reply: { replied: "已回复", unreplied: "未回复", unknown: "无法确认" },
+  first_resp: {
+    qualified: "首次响应达标 (≤24h)",
+    unqualified: "首次响应未达标 (>24h)",
+    open_timeout: "开启未响应超时 (>24h)",
+    self: "自处理 Issue",
+  },
   risk: { normal: "正常", soon: "即将超期", overdue: "已超期" },
   ai: { yes: "存在报告", no: "无报告" },
 };
@@ -38,6 +51,7 @@ const presets: { label: string; params: Record<string, string> }[] = [
   { label: "全部 Open", params: {} },
   { label: "🔥 已超期", params: { risk: "overdue" } },
   { label: "⚡ 即将超期", params: { risk: "soon" } },
+  { label: "⏱️ 首响未达标", params: { state: "all", first_resp: "unqualified" } },
   { label: "👤 缺内部责任人", params: { internal: "missing" } },
   { label: "💬 待维护者回复", params: { reply: "unreplied" } },
   { label: "🤖 含 AI 报告", params: { ai: "yes" } },
@@ -59,11 +73,20 @@ export function IssueList({
     p.delete("page");
     go(Object.fromEntries(p));
   };
+  const setMulti = (updates: Record<string, string>) => {
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) p.set(k, v);
+      else p.delete(k);
+    }
+    p.delete("page");
+    go(Object.fromEntries(p));
+  };
+
+  const rangePreset = value("range");
   const filtered = issues.filter((i) => {
     const m = i.metrics;
-    const day = new Date(i.created_at).toLocaleDateString("en-CA", {
-      timeZone: "Asia/Shanghai",
-    });
+    const day = toBeijingDateStr(i.created_at);
+    const sla = value("first_resp") ? evaluateIssueSla(i, at) : null;
     return (
       (!value("workload_role") ||
         i.assignees.find((a) => a.login === i.workload_owner)?.membership ===
@@ -71,7 +94,8 @@ export function IssueList({
       (!value("workload_owner") ||
         i.workload_owner === value("workload_owner")) &&
       (!value("repo") || i.repo === value("repo")) &&
-      (!value("author") || i.author.login === value("author")) &&
+      (!value("author") ||
+        i.author.login.toLowerCase().includes(value("author").toLowerCase())) &&
       (!value("owner") ||
         (value("owner") === "未分配"
           ? !i.assignees.length
@@ -87,6 +111,16 @@ export function IssueList({
           ? i.metrics.no_internal_assignee
           : (i.internal_assignment || "unknown") === value("internal"))) &&
       (!value("reply") || i.reply_status === value("reply")) &&
+      (!value("first_resp") ||
+        (value("first_resp") === "qualified"
+          ? sla!.firstRespQualified
+          : value("first_resp") === "unqualified"
+            ? sla!.firstRespUnqualified
+            : value("first_resp") === "open_timeout"
+              ? sla!.openNoRespTimeout
+              : value("first_resp") === "self"
+                ? sla!.isSelfProcessed
+                : true)) &&
       (!value("risk") ||
         (value("risk") === "overdue"
           ? m.overdue
@@ -98,7 +132,7 @@ export function IssueList({
       (!value("from") || day >= value("from")) &&
       (!value("to") || day <= value("to")) &&
       (!value("q") ||
-        `${i.title} #${i.number}`
+        `${i.title} #${i.number} ${i.author.login}`
           .toLowerCase()
           .includes(value("q").toLowerCase()))
     );
@@ -143,14 +177,22 @@ export function IssueList({
     );
   };
 
+  const authorCounts = new Map<string, number>();
+  for (const i of issues) {
+    if (i.author?.login) {
+      authorCounts.set(i.author.login, (authorCounts.get(i.author.login) || 0) + 1);
+    }
+  }
+  const sortedAuthors = Array.from(authorCounts.entries()).sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  );
+
   const activeEntries = Object.keys(filterLabels).flatMap((k) => {
     const def = k === "state" ? "open" : "";
     const v = value(k, def);
     if (v === def) return [];
     const displayVal =
-      k === "repo"
-        ? short(v)
-        : filterValueLabels[k]?.[v] || v;
+      k === "repo" ? short(v) : filterValueLabels[k]?.[v] || v;
     return [{ key: k, label: filterLabels[k], value: displayVal }];
   });
 
@@ -159,26 +201,54 @@ export function IssueList({
   return (
     <>
       <section className="panel filters-panel">
-        <div className="presets-bar" data-no-export>
-          <span className="muted">快捷视角：</span>
-          {presets.map((pr) => {
-            const entries = Object.entries(pr.params);
-            const isMatch =
-              entries.length === 0
-                ? activeEntries.length === 0
-                : activeEntries.length === entries.length &&
-                  entries.every(([k, v]) => value(k) === v);
-            return (
-              <button
-                key={pr.label}
-                type="button"
-                className={`chip-btn ${isMatch ? "active" : ""}`}
-                onClick={() => go(pr.params)}
-              >
-                {pr.label}
-              </button>
-            );
-          })}
+        <div className="presets-row" data-no-export>
+          <div className="presets-bar">
+            <span className="muted">快捷视角：</span>
+            {presets.map((pr) => {
+              const entries = Object.entries(pr.params);
+              const isMatch =
+                entries.length === 0
+                  ? activeEntries.length === 0
+                  : activeEntries.length === entries.length &&
+                    entries.every(([k, v]) => value(k) === v);
+              return (
+                <button
+                  key={pr.label}
+                  type="button"
+                  className={`chip-btn ${isMatch ? "active" : ""}`}
+                  onClick={() => go(pr.params)}
+                >
+                  {pr.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="presets-bar">
+            <span className="muted">创建时间范围：</span>
+            {TIME_PRESETS.filter((tp) => tp.key !== "custom").map((tp) => {
+              const isMatch =
+                tp.key === ""
+                  ? !rangePreset && !value("from") && !value("to")
+                  : rangePreset === tp.key;
+              return (
+                <button
+                  key={tp.key || "all"}
+                  type="button"
+                  className={`chip-btn ${isMatch ? "active" : ""}`}
+                  onClick={() => {
+                    if (!tp.key) {
+                      setMulti({ range: "", from: "", to: "" });
+                    } else {
+                      const r = resolveTimeRange(tp.key, "", "", at);
+                      setMulti({ range: tp.key, from: r.from, to: r.to });
+                    }
+                  }}
+                >
+                  {tp.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="filters">
           <label className={`search ${value("q") ? "active-label" : ""}`}>
@@ -186,7 +256,7 @@ export function IssueList({
             <div className="input-clear-wrap">
               <input
                 className={value("q") ? "active-filter" : ""}
-                placeholder="输入关键词或 #168"
+                placeholder="输入关键词、#168 或提出人"
                 value={value("q")}
                 onChange={(e) => set("q", e.target.value)}
               />
@@ -206,6 +276,12 @@ export function IssueList({
             ["", "全部仓库"],
             ...Array.from(new Set(issues.map((i) => i.repo))).map(
               (r) => [r, short(r)] as [string, string],
+            ),
+          ])}
+          {select("author", "提出人", [
+            ["", "全部提出人"],
+            ...sortedAuthors.map(
+              ([a, n]) => [a, `${a} (${n})`] as [string, string],
             ),
           ])}
           {select("owner", "责任人", [
@@ -230,12 +306,6 @@ export function IssueList({
             ["internal", "内部责任人"],
             ["external", "外部开发者"],
           ])}
-          {select("author", "创建者", [
-            ["", "全部创建者"],
-            ...Array.from(new Set(issues.map((i) => i.author.login)))
-              .sort()
-              .map((a) => [a, a] as [string, string]),
-          ])}
           {select("state", "状态", [
             ["open", "Open"],
             ["closed", "Closed"],
@@ -258,6 +328,13 @@ export function IssueList({
             ["unreplied", "未回复"],
             ["unknown", "无法确认"],
           ])}
+          {select("first_resp", "首次响应 SLA", [
+            ["", "全部"],
+            ["qualified", "首次响应达标 (≤24h)"],
+            ["unqualified", "首次响应未达标 (>24h)"],
+            ["open_timeout", "开启未响应超时 (>24h)"],
+            ["self", "自处理 Issue"],
+          ])}
           {select("risk", "期限预警", [
             ["", "全部"],
             ["normal", "正常"],
@@ -275,7 +352,9 @@ export function IssueList({
               type="date"
               className={value("from") ? "active-filter" : ""}
               value={value("from")}
-              onChange={(e) => set("from", e.target.value)}
+              onChange={(e) =>
+                setMulti({ range: "custom", from: e.target.value })
+              }
             />
           </label>
           <label className={value("to") ? "active-label" : ""}>
@@ -284,7 +363,9 @@ export function IssueList({
               type="date"
               className={value("to") ? "active-filter" : ""}
               value={value("to")}
-              onChange={(e) => set("to", e.target.value)}
+              onChange={(e) =>
+                setMulti({ range: "custom", to: e.target.value })
+              }
             />
           </label>
           <button onClick={() => go()}>重置筛选</button>
@@ -297,7 +378,13 @@ export function IssueList({
                 key={item.key}
                 type="button"
                 className="filter-chip"
-                onClick={() => set(item.key, item.key === "state" ? "open" : "")}
+                onClick={() => {
+                  if (item.key === "from" || item.key === "to") {
+                    setMulti({ [item.key]: "", range: "" });
+                  } else {
+                    set(item.key, item.key === "state" ? "open" : "");
+                  }
+                }}
               >
                 <span>{item.label}：</span>
                 <strong>{item.value}</strong>
@@ -310,10 +397,22 @@ export function IssueList({
       <section className="panel">
         <div className="toolbar">
           <button
-            className="btn-secondary"
+            className="btn-export"
             data-no-export
             onClick={() => exportIssues(filtered, at, p.toString())}
           >
+            <svg
+              className="btn-icon"
+              aria-hidden="true"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M8 2.5v7.5M5 7.2L8 10.2l3-3M3 13h10" />
+            </svg>
             导出筛选结果 HTML（{filtered.length} 项）
           </button>
           <h2>
@@ -336,7 +435,7 @@ export function IssueList({
               <tr>
                 {[
                   "仓库 / 编号 / 标题",
-                  "责任人与创建者",
+                  "责任人与提出人",
                   "独立状态",
                   "创建 / 更新（北京）",
                   "处理时长 / 期限",
@@ -379,7 +478,16 @@ export function IssueList({
                     {i.assignees.map((a) => a.login).join(", ") || (
                       <span className="amber">未分配</span>
                     )}
-                    <small className="muted">创建者 {i.author.login}</small>
+                    <small className="muted">
+                      提出人{" "}
+                      <button
+                        type="button"
+                        className="text author-btn"
+                        onClick={() => set("author", i.author.login)}
+                      >
+                        {i.author.login}
+                      </button>
+                    </small>
                   </td>
                   <td>
                     <Badges i={i} />

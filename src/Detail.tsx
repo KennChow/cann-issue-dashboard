@@ -3,6 +3,7 @@ import type { Issue } from "./types";
 import { fmt, memberLabel } from "./shared";
 import { Badges } from "./Badges";
 import { exportView } from "./export";
+import { evaluateIssueSla } from "./sla";
 
 export function Detail({
   issue: i,
@@ -22,6 +23,7 @@ export function Detail({
   const prevIssue = idx > 0 ? issues[idx - 1] : undefined;
   const nextIssue =
     idx >= 0 && idx < issues.length - 1 ? issues[idx + 1] : undefined;
+  const sla = evaluateIssueSla(i, at);
 
   useEffect(() => {
     setCopied(false);
@@ -125,10 +127,22 @@ export function Detail({
               </>
             )}
             <button
-              className="btn-secondary"
+              className="btn-export"
               data-no-export
               onClick={() => exportView("Issue-" + i.number, ".drawer", at)}
             >
+              <svg
+                className="btn-icon"
+                aria-hidden="true"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M8 2.5v7.5M5 7.2L8 10.2l3-3M3 13h10" />
+              </svg>
               导出详情 HTML
             </button>
             <button data-no-export id="detail-close" onClick={close}>
@@ -149,7 +163,7 @@ export function Detail({
           </a>
         </p>
         <dl className="meta-grid">
-          <dt>创建者</dt>
+          <dt>提出人（创建者）</dt>
           <dd>{i.author.login}</dd>
           <dt>负责人</dt>
           <dd>
@@ -179,10 +193,21 @@ export function Detail({
           <dd>
             {i.source_status} / {i.priority || "未提供"}
           </dd>
+          <dt>首次响应 SLA</dt>
+          <dd>
+            {sla.isSelfProcessed
+              ? "自处理 Issue（提出人与责任人相同，官方口径不纳入首次响应达标率统计）"
+              : sla.isMilestone
+                ? "里程碑 Issue（官方口径不纳入首次响应达标率统计）"
+                : sla.firstRespQualified
+                  ? `达标（≤24h 有效工作日）· ${sla.firstRespWorkHours !== null ? `首次响应耗时 ${sla.firstRespWorkHours.toFixed(1)}h` : `未响应但停留仅 ${sla.stayWorkHours.toFixed(1)}h`}`
+                  : `未达标（>24h 有效工作日）· ${sla.firstRespWorkHours !== null ? `首次响应耗时 ${sla.firstRespWorkHours.toFixed(1)}h` : `未响应且已停留 ${sla.stayWorkHours.toFixed(1)}h`}`}
+          </dd>
           <dt>判定依据</dt>
           <dd>
-            创建至快照 {i.metrics.age_hours.toFixed(1)}h；Open 且 &gt;336h
-            超期；264h &lt; age ≤336h 临期。未回复等待{" "}
+            创建至快照 {i.metrics.age_hours.toFixed(1)}h（有效工作日停留{" "}
+            {sla.stayWorkHours.toFixed(1)}h）；Open 且 &gt;336h 超期；264h &lt;
+            age ≤336h 临期。未回复等待{" "}
             {i.reply_status === "unreplied"
               ? i.metrics.age_hours.toFixed(1) + "h"
               : "—"}

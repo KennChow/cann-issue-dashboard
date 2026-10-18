@@ -10,6 +10,29 @@ import "./style.css";
 import { InternalMembers } from "./InternalMembers";
 import { filterOwners } from "./owners";
 import { Duty } from "./DutyView";
+import {
+  TIME_PRESETS,
+  resolveTimeRange,
+  filterIssuesByDateRange,
+  computeDynamicStats,
+  computeOfficialSla,
+} from "./sla";
+
+const ExportIcon = () => (
+  <svg
+    className="btn-icon"
+    aria-hidden="true"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M8 2.5v7.5M5 7.2L8 10.2l3-3M3 13h10" />
+  </svg>
+);
+
 const cards: {
   key: keyof Stats;
   name: string;
@@ -55,6 +78,7 @@ const cards: {
     filter: { state: "all" },
   },
 ];
+
 function App() {
   const [data, setData] = useState<Data>();
   const [error, setError] = useState("");
@@ -98,7 +122,26 @@ function App() {
   const all = Object.values(data.repositories).flatMap((r) => r.issues);
   const p = params();
   const ownerRole = p.get("owner_role") || "";
-  const visibleOwners = filterOwners(data, ownerRole).filter(
+  const rangePreset = p.get("range") || "";
+  const customFrom = p.get("from") || "";
+  const customTo = p.get("to") || "";
+  const activeRange = resolveTimeRange(
+    rangePreset,
+    customFrom,
+    customTo,
+    data.generated_at,
+  );
+  const hasDateFilter = Boolean(activeRange.from || activeRange.to);
+  const dateFilteredAll = filterIssuesByDateRange(
+    all,
+    activeRange.from,
+    activeRange.to,
+  );
+  const allowedIds = hasDateFilter
+    ? new Set(dateFilteredAll.map((i) => i.id))
+    : undefined;
+
+  const visibleOwners = filterOwners(data, ownerRole, allowedIds).filter(
     (o) =>
       !ownerSearch.trim() ||
       o.person.login.toLowerCase().includes(ownerSearch.trim().toLowerCase()),
@@ -106,8 +149,31 @@ function App() {
   const view = hash.split("?")[0];
   const selected = all.find((i) => i.id === p.get("id"));
   const repo = p.get("repo") || "";
-  const scope = repo ? all.filter((i) => i.repo === repo) : all;
-  const stat = repo ? data.repositories[repo]?.stats || data.stats : data.stats;
+  const scope = repo
+    ? dateFilteredAll.filter((i) => i.repo === repo)
+    : dateFilteredAll;
+  const stat = hasDateFilter
+    ? computeDynamicStats(scope)
+    : repo
+      ? data.repositories[repo]?.stats || data.stats
+      : data.stats;
+  const sla = computeOfficialSla(scope, data.generated_at);
+
+  const dateDrillParams: Record<string, string> = {
+    ...(activeRange.from ? { from: activeRange.from } : {}),
+    ...(activeRange.to ? { to: activeRange.to } : {}),
+    ...(rangePreset ? { range: rangePreset } : {}),
+  };
+
+  const setDashboardParams = (updates: Record<string, string>) => {
+    const next = new URLSearchParams(p);
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) next.set(k, v);
+      else next.delete(k);
+    }
+    go(Object.fromEntries(next), "dashboard");
+  };
+
   const ageBins = [
     { name: "≤3 天", min: 0, max: 72 },
     { name: "3–7 天", min: 72, max: 168 },
@@ -147,6 +213,12 @@ function App() {
             运行总览
           </a>
           <a
+            className={view.includes("issues") ? "active" : ""}
+            href="#/issues"
+          >
+            Issue 工作台
+          </a>
+          <a
             href="#/members"
             className={view.includes("members") ? "active" : ""}
           >
@@ -154,12 +226,6 @@ function App() {
           </a>
           <a href="#/duty" className={view.includes("duty") ? "active" : ""}>
             GE 责任田
-          </a>
-          <a
-            className={view.includes("issues") ? "active" : ""}
-            href="#/issues"
-          >
-            Issue 工作台
           </a>
         </nav>
         <span className="live">
@@ -186,7 +252,7 @@ function App() {
           <div className="heading-actions">
             {!view.includes("issues") && !view.includes("duty") && (
               <button
-                className="btn-secondary"
+                className="btn-export"
                 data-no-export
                 onClick={() =>
                   exportView(
@@ -196,6 +262,7 @@ function App() {
                   )
                 }
               >
+                <ExportIcon />
                 {view.includes("members") ? "导出总表 HTML" : "导出大屏 HTML"}
               </button>
             )}
@@ -238,33 +305,96 @@ function App() {
           <IssueList issues={all} hash={hash} at={data.generated_at} />
         ) : (
           <>
-            <div className="toolbar">
+            <div className="toolbar dashboard-bar">
               <h2>
                 全局态势 <span className="muted">/ OPERATIONS</span>
               </h2>
-              <select
-                aria-label="总览仓库"
-                className={repo ? "active-filter" : ""}
-                value={repo}
-                onChange={(e) =>
-                  go(
-                    e.target.value ? { repo: e.target.value } : {},
-                    "dashboard",
-                  )
-                }
-              >
-                <option value="">全部仓库</option>
-                {Object.keys(data.repositories).map((r) => (
-                  <option key={r}>{r}</option>
-                ))}
-              </select>
+              <div className="dashboard-filters" data-no-export>
+                <div className="time-range-pills" role="group" aria-label="统计时间范围">
+                  {TIME_PRESETS.map((tp) => {
+                    const isActive =
+                      tp.key === "custom"
+                        ? rangePreset === "custom" ||
+                          (!rangePreset && Boolean(customFrom || customTo))
+                        : rangePreset === tp.key && !customFrom && !customTo;
+                    return (
+                      <button
+                        key={tp.key || "all"}
+                        type="button"
+                        className={`chip-btn ${isActive ? "active" : ""}`}
+                        onClick={() => {
+                          if (tp.key === "custom") {
+                            setDashboardParams({ range: "custom" });
+                          } else {
+                            setDashboardParams({
+                              range: tp.key,
+                              from: "",
+                              to: "",
+                            });
+                          }
+                        }}
+                      >
+                        {tp.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(rangePreset === "custom" || customFrom || customTo) && (
+                  <div className="custom-date-inline">
+                    <input
+                      type="date"
+                      aria-label="统计起始日期"
+                      className={customFrom ? "active-filter" : ""}
+                      value={customFrom}
+                      onChange={(e) =>
+                        setDashboardParams({
+                          range: "custom",
+                          from: e.target.value,
+                        })
+                      }
+                    />
+                    <span className="muted">至</span>
+                    <input
+                      type="date"
+                      aria-label="统计结束日期"
+                      className={customTo ? "active-filter" : ""}
+                      value={customTo}
+                      onChange={(e) =>
+                        setDashboardParams({
+                          range: "custom",
+                          to: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                )}
+                <select
+                  aria-label="总览仓库"
+                  className={repo ? "active-filter" : ""}
+                  value={repo}
+                  onChange={(e) =>
+                    setDashboardParams({ repo: e.target.value })
+                  }
+                >
+                  <option value="">全部仓库</option>
+                  {Object.keys(data.repositories).map((r) => (
+                    <option key={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="cards">
               {cards.map((c) => (
                 <button
                   key={c.key}
                   className={`metric ${c.color}`}
-                  onClick={() => go({ ...c.filter, ...(repo ? { repo } : {}) })}
+                  onClick={() =>
+                    go({
+                      ...c.filter,
+                      ...(repo ? { repo } : {}),
+                      ...dateDrillParams,
+                    })
+                  }
                 >
                   <span>{c.name}</span>
                   <strong>
@@ -278,17 +408,239 @@ function App() {
               ))}
             </div>
             <p className="muted">
-              回复身份无法确认：{stat.unknown} 项（不计入未回复）。快照计算于{" "}
-              {fmt(data.generated_at)}。
+              当前统计周期：<strong>{activeRange.label}</strong>（共 {scope.length}{" "}
+              条 Issue） · 回复身份无法确认：{stat.unknown} 项（不计入未回复） ·
+              快照计算于 {fmt(data.generated_at)}。
             </p>
+
+            <section className="panel sla-section">
+              <div className="toolbar">
+                <div>
+                  <h2>
+                    CANN 官网 SLA 核心指标 · 闭环率与首次响应达标率{" "}
+                    <span className="tag blue">对齐 digital.hicann.cn</span>
+                  </h2>
+                  <p className="muted">
+                    严格遵循 CANN 数字化协作平台（digital.hicann.cn）统计口径：剔除中国大陆法定节假日及周末，首次响应排除自处理（{sla.excludedSelfProcessed} 项）及里程碑 Issue。
+                  </p>
+                </div>
+              </div>
+              <div className="sla-cards">
+                <button
+                  type="button"
+                  className={`metric sla-card ${sla.closureColor}`}
+                  onClick={() =>
+                    go({
+                      state: "closed",
+                      ...(repo ? { repo } : {}),
+                      ...dateDrillParams,
+                    })
+                  }
+                >
+                  <div className="sla-card-head">
+                    <span>Issue 闭环率（官方口径）</span>
+                    <em className={`tag ${sla.closureColor}`}>
+                      {sla.closureRate === null
+                        ? "无数据"
+                        : sla.closureRate >= 90
+                          ? "达标 ≥90%"
+                          : sla.closureRate >= 50
+                            ? "预警 50%~90%"
+                            : "低于 50%"}
+                    </em>
+                  </div>
+                  <strong>
+                    {sla.closureRate !== null ? `${sla.closureRate}%` : "—"}
+                  </strong>
+                  <small>
+                    已闭环 {sla.closed} / 总数 {sla.total} · 查看已闭环 ↗
+                  </small>
+                </button>
+
+                <button
+                  type="button"
+                  className={`metric sla-card ${sla.firstRespColor}`}
+                  onClick={() =>
+                    go({
+                      state: "all",
+                      first_resp: "qualified",
+                      ...(repo ? { repo } : {}),
+                      ...dateDrillParams,
+                    })
+                  }
+                >
+                  <div className="sla-card-head">
+                    <span>首次响应达标率（≤24h 工作日）</span>
+                    <em className={`tag ${sla.firstRespColor}`}>
+                      {sla.firstRespQualifiedRate === null
+                        ? "无数据"
+                        : sla.firstRespQualifiedRate >= 80
+                          ? "达标 ≥80%"
+                          : sla.firstRespQualifiedRate >= 50
+                            ? "预警 50%~80%"
+                            : "低于 50%"}
+                    </em>
+                  </div>
+                  <strong>
+                    {sla.firstRespQualifiedRate !== null
+                      ? `${sla.firstRespQualifiedRate}%`
+                      : "—"}
+                  </strong>
+                  <small>
+                    达标 {sla.firstRespQualifiedNum} / 有效总数{" "}
+                    {sla.respEligibleTotal} · 查看达标 ↗
+                  </small>
+                </button>
+
+                <button
+                  type="button"
+                  className={`metric sla-card ${sla.firstRespUnqualifiedNum > 0 ? "red" : "green"}`}
+                  onClick={() =>
+                    go({
+                      state: "all",
+                      first_resp: "unqualified",
+                      ...(repo ? { repo } : {}),
+                      ...dateDrillParams,
+                    })
+                  }
+                >
+                  <div className="sla-card-head">
+                    <span>首次响应未达标数</span>
+                    <em className="tag">有效样本池</em>
+                  </div>
+                  <strong>{sla.firstRespUnqualifiedNum}</strong>
+                  <small>
+                    首响 &gt;24h 或未响应停留 &gt;24h · 查看明细 ↗
+                  </small>
+                </button>
+
+                <button
+                  type="button"
+                  className={`metric sla-card ${sla.openNoRespTimeoutNum > 0 ? "amber" : "green"}`}
+                  onClick={() =>
+                    go({
+                      state: "open",
+                      first_resp: "open_timeout",
+                      ...(repo ? { repo } : {}),
+                      ...dateDrillParams,
+                    })
+                  }
+                >
+                  <div className="sla-card-head">
+                    <span>开启未响应超时数 / 总数</span>
+                    <em className="tag">Open 未响应</em>
+                  </div>
+                  <strong>
+                    {sla.openNoRespTimeoutNum}{" "}
+                    <small className="fraction-inline">
+                      / {sla.openNoRespTotal}
+                    </small>
+                  </strong>
+                  <small>开启未响应且停留 &gt;24h 工作日 · 查看 ↗</small>
+                </button>
+
+                <div className="metric sla-card static-card blue">
+                  <div className="sla-card-head">
+                    <span>平均首次响应时长</span>
+                    <em className="tag blue">有效工作日</em>
+                  </div>
+                  <strong>
+                    {sla.avgFirstRespHours !== null
+                      ? `${sla.avgFirstRespHours}h`
+                      : "—"}
+                  </strong>
+                  <small>非创建者真实用户首条评论平均耗时</small>
+                </div>
+
+                <div className="metric sla-card static-card purple">
+                  <div className="sla-card-head">
+                    <span>平均闭环时长</span>
+                    <em className="tag purple">有效工作日</em>
+                  </div>
+                  <strong>
+                    {sla.avgCloseDays !== null ? `${sla.avgCloseDays}d` : "—"}
+                  </strong>
+                  <small>已闭环 Issue 从创建至关闭平均工作日天数</small>
+                </div>
+              </div>
+
+              <details className="sla-rules-box" open>
+                <summary>
+                  📖 官方统计规则说明（对齐 CANN 数字化协作平台 digital.hicann.cn）
+                </summary>
+                <div className="sla-rules-grid">
+                  <div>
+                    <h4>1. Issue 闭环率 & 平均闭环时长</h4>
+                    <p>
+                      <strong>计算公式</strong>：统计周期内，
+                      <code>已闭环 Issue 数量 ÷ 全部 Issue 数量 × 100%</code>。
+                    </p>
+                    <p>
+                      <strong>官方健康度阈值</strong>：
+                      <span className="tag blue">蓝色 ≥ 90%</span>{" "}
+                      <span className="tag amber">橙色 50% ~ 90%</span>{" "}
+                      <span className="tag red">红色 &lt; 50%</span>。
+                    </p>
+                    <p>
+                      <strong>平均闭环时长(D)</strong>：已闭环 Issue 从创建到关闭的有效工作日间隔均值（剔除中国大陆法定节假日及周末）。
+                    </p>
+                  </div>
+                  <div>
+                    <h4>2. 首次响应达标率 & 首次响应未达标数</h4>
+                    <p>
+                      <strong>达标判定</strong>：统计周期内，Issue 从创建完成到收到
+                      <strong>非创建者（真实用户，排除机器人）</strong>
+                      首条评论的时长 <code>≤ 24 小时</code>，或虽未响应但停留时长{" "}
+                      <code>≤ 24 小时</code>，即视为首次响应达标。
+                    </p>
+                    <p>
+                      <strong>官方健康度阈值</strong>：
+                      <span className="tag blue">蓝色 ≥ 80%</span>{" "}
+                      <span className="tag amber">橙色 50% ~ 80%</span>{" "}
+                      <span className="tag red">红色 &lt; 50%</span>。
+                    </p>
+                    <p>
+                      <strong>未达标条件</strong>：① 首次响应有效工作日时长{" "}
+                      <code>&gt; 24 小时</code>；或 ② 未响应且有效工作日停留时长{" "}
+                      <code>&gt; 24 小时</code>。
+                    </p>
+                  </div>
+                  <div>
+                    <h4>3. 样本排除与有效工作日计时规则</h4>
+                    <p>
+                      <strong>排除自处理与里程碑</strong>：首次响应相关指标自动排除
+                      <strong>自处理 Issue</strong>（Issue 创建者与当前任意一位责任人为同一用户）和
+                      <strong>里程碑（Milestone）类型 Issue</strong>。
+                    </p>
+                    <p>
+                      <strong>有效工作日计时</strong>：所有时长计算均按北京时间（UTC+8）自动剔除
+                      <strong>中国大陆法定节假日及周末</strong>（含国务院调休补班日历校准），仅累计有效工作日时长。
+                    </p>
+                  </div>
+                </div>
+              </details>
+            </section>
+
             <div className="grid three">
               <Chart title="仓库压力 / Open 与超期">
                 <Bars
-                  data={Object.entries(data.repositories).map(([name, r]) => ({
-                    name: short(name),
-                    open: r.stats.open,
-                    overdue: r.stats.overdue,
-                  }))}
+                  data={Object.entries(data.repositories).map(([name, r]) => {
+                    const rIssues = hasDateFilter
+                      ? filterIssuesByDateRange(
+                          r.issues,
+                          activeRange.from,
+                          activeRange.to,
+                        )
+                      : r.issues;
+                    const rStats = hasDateFilter
+                      ? computeDynamicStats(rIssues)
+                      : r.stats;
+                    return {
+                      name: short(name),
+                      open: rStats.open,
+                      overdue: rStats.overdue,
+                    };
+                  })}
                   keys={[
                     { key: "open", name: "Open", color: "#50a9ff" },
                     { key: "overdue", name: "已超期", color: "#fb7185" },
@@ -337,6 +689,8 @@ function App() {
                         "即将超期",
                         "Closed",
                         "闭环率",
+                        "首次响应达标率",
+                        "平均首响(H)",
                         "成功同步",
                       ].map((x) => (
                         <th key={x}>{x}</th>
@@ -344,47 +698,101 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(data.repositories).map(([name, r]) => (
-                      <tr key={name}>
-                        <td>
-                          <button
-                            className="text repo-link"
-                            onClick={() => go({ repo: name })}
-                          >
-                            {short(name)}
-                          </button>
-                        </td>
-                        {cards.slice(0, 7).map((c) => {
-                          const val = r.stats[c.key];
-                          const isZeroRisk =
-                            val === 0 &&
-                            (c.color === "red" || c.color === "amber");
-                          return (
-                            <td key={c.key}>
-                              <button
-                                className={`text ${isZeroRisk ? "zero" : c.color}`}
-                                onClick={() => go({ repo: name, ...c.filter })}
-                              >
-                                {val}
-                              </button>
-                            </td>
-                          );
-                        })}
-                        <td>
-                          <div className="rate-cell">
-                            <span>{r.stats.closure_rate ?? "—"}%</span>
-                            {r.stats.closure_rate !== null && (
-                              <span className="mini-bar" aria-hidden="true">
-                                <i
-                                  style={{ width: `${r.stats.closure_rate}%` }}
-                                />
+                    {Object.entries(data.repositories).map(([name, r]) => {
+                      const rIssues = hasDateFilter
+                        ? filterIssuesByDateRange(
+                            r.issues,
+                            activeRange.from,
+                            activeRange.to,
+                          )
+                        : r.issues;
+                      const rStats = hasDateFilter
+                        ? computeDynamicStats(rIssues)
+                        : r.stats;
+                      const rSla = computeOfficialSla(
+                        rIssues,
+                        data.generated_at,
+                      );
+                      return (
+                        <tr key={name}>
+                          <td>
+                            <button
+                              className="text repo-link"
+                              onClick={() =>
+                                go({ repo: name, ...dateDrillParams })
+                              }
+                            >
+                              {short(name)}
+                            </button>
+                          </td>
+                          {cards.slice(0, 7).map((c) => {
+                            const val = rStats[c.key];
+                            const isZeroRisk =
+                              val === 0 &&
+                              (c.color === "red" || c.color === "amber");
+                            return (
+                              <td key={c.key}>
+                                <button
+                                  className={`text ${isZeroRisk ? "zero" : c.color}`}
+                                  onClick={() =>
+                                    go({
+                                      repo: name,
+                                      ...c.filter,
+                                      ...dateDrillParams,
+                                    })
+                                  }
+                                >
+                                  {val}
+                                </button>
+                              </td>
+                            );
+                          })}
+                          <td>
+                            <div className="rate-cell">
+                              <span className={rSla.closureColor}>
+                                {rStats.closure_rate ?? "—"}%
                               </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="muted">{fmt(r.last_success)}</td>
-                      </tr>
-                    ))}
+                              {rStats.closure_rate !== null && (
+                                <span className="mini-bar" aria-hidden="true">
+                                  <i
+                                    style={{
+                                      width: `${rStats.closure_rate}%`,
+                                    }}
+                                  />
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            <button
+                              className={`text ${rSla.firstRespColor}`}
+                              onClick={() =>
+                                go({
+                                  repo: name,
+                                  state: "all",
+                                  first_resp: "qualified",
+                                  ...dateDrillParams,
+                                })
+                              }
+                            >
+                              {rSla.firstRespQualifiedRate !== null
+                                ? `${rSla.firstRespQualifiedRate}%`
+                                : "—"}
+                              <small className="muted">
+                                {rSla.firstRespQualifiedNum}/
+                                {rSla.respEligibleTotal}
+                              </small>
+                            </button>
+                          </td>
+                          <td>
+                            {rSla.avgFirstRespHours !== null
+                              ? `${rSla.avgFirstRespHours}h`
+                              : "—"}
+                          </td>
+                          <td className="muted">{fmt(r.last_success)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -481,6 +889,7 @@ function App() {
                           go({
                             workload_owner: o.person.login,
                             ...(ownerRole ? { workload_role: ownerRole } : {}),
+                            ...dateDrillParams,
                           })
                         }
                       >

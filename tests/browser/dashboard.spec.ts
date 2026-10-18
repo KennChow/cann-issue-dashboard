@@ -86,7 +86,7 @@ test("internal assignee label drills down and is included in HTML export", async
   await page
     .getByRole("button", { name: /未分配内部责任人.*查看 Issue/ })
     .click();
-  await expect(page.getByLabel("内部责任人", { exact: true })).toHaveValue(
+  await expect(page.getByLabel("是否已分配内部维护人", { exact: true })).toHaveValue(
     "missing",
   );
   await expect(
@@ -96,7 +96,7 @@ test("internal assignee label drills down and is included in HTML export", async
       .getByText("未分配内部责任人", { exact: true }),
   ).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("内部责任人", { exact: true })).toHaveValue(
+  await expect(page.getByLabel("是否已分配内部维护人", { exact: true })).toHaveValue(
     "missing",
   );
   const pending = page.waitForEvent("download");
@@ -127,7 +127,7 @@ test("workload cards label outsiders and drill down to unique ownership", async 
     .locator(".owner")
     .filter({ has: page.locator("strong", { hasText: target.person.login }) });
   await card.click();
-  await expect(page.getByLabel("工作量归属", { exact: true })).toHaveValue(
+  await expect(page.getByLabel("内部维护人", { exact: true })).toHaveValue(
     target.person.login,
   );
   await expect(
@@ -160,9 +160,8 @@ test("owner role filtering persists and updates counts and drilldown", async ({
     );
   }
   await page.locator(".owner").first().click();
-  await expect(page.getByLabel("归属人身份", { exact: true })).toHaveValue(
-    "internal",
-  );
+  await expect(page).toHaveURL(/workload_role=internal/);
+  await expect(page.getByLabel("维护人身份", { exact: true })).toHaveCount(0);
 });
 test("unified internal directory shows provenance and exports HTML", async ({
   page,

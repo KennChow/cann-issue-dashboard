@@ -14,12 +14,12 @@ const filterLabels: Record<string, string> = {
   repo: "仓库",
   author: "提出人",
   owner: "责任人",
-  workload_owner: "工作量归属",
-  workload_role: "归属人身份",
+  workload_owner: "内部维护人",
+  workload_role: "维护人身份",
   state: "状态",
-  assignment: "责任分配",
-  internal: "内部责任人",
-  reply: "维护者回复",
+  assignment: "是否已分配责任人",
+  internal: "是否已分配内部维护人",
+  reply: "维护人回复",
   first_resp: "首次响应 SLA",
   risk: "期限预警",
   ai: "AI 分析",
@@ -28,12 +28,12 @@ const filterLabels: Record<string, string> = {
 };
 
 const filterValueLabels: Record<string, Record<string, string>> = {
-  workload_role: { internal: "内部责任人", external: "外部开发者" },
+  workload_role: { internal: "内部成员", external: "外部开发者" },
   state: { open: "Open", closed: "Closed", all: "全部" },
   assignment: { yes: "已分配", no: "未分配" },
   internal: {
-    missing: "未分配内部责任人",
-    assigned: "已分配内部责任人",
+    missing: "未分配内部维护人",
+    assigned: "已分配内部维护人",
     unknown: "无法确认",
   },
   reply: { replied: "已回复", unreplied: "未回复", unknown: "无法确认" },
@@ -53,7 +53,7 @@ const presets: { label: string; params: Record<string, string> }[] = [
   { label: "⚡ 即将超期", params: { risk: "soon" } },
   { label: "⏱️ 首响未达标", params: { state: "all", first_resp: "unqualified" } },
   { label: "👤 缺内部责任人", params: { internal: "missing" } },
-  { label: "💬 待维护者回复", params: { reply: "unreplied" } },
+  { label: "💬 待维护人回复", params: { reply: "unreplied" } },
   { label: "🤖 含 AI 报告", params: { ai: "yes" } },
 ];
 
@@ -283,7 +283,7 @@ export function IssueList({
               .sort()
               .map((a) => [a, a] as [string, string]),
           ])}
-          {select("workload_owner", "工作量归属", [
+          {select("workload_owner", "内部维护人", [
             ["", "全部"],
             ...Array.from(
               new Set(issues.map((i) => i.workload_owner || "未分配")),
@@ -291,28 +291,23 @@ export function IssueList({
               .sort()
               .map((n) => [n, n] as [string, string]),
           ])}
-          {select("workload_role", "归属人身份", [
-            ["", "全部"],
-            ["internal", "内部责任人"],
-            ["external", "外部开发者"],
-          ])}
           {select("state", "状态", [
             ["open", "Open"],
             ["closed", "Closed"],
             ["all", "全部"],
           ])}
-          {select("assignment", "责任分配", [
+          {select("assignment", "是否已分配责任人", [
             ["", "全部"],
             ["yes", "已分配"],
             ["no", "未分配"],
           ])}
-          {select("internal", "内部责任人", [
+          {select("internal", "是否已分配内部维护人", [
             ["", "全部"],
-            ["missing", "未分配内部责任人"],
-            ["assigned", "已分配内部责任人"],
+            ["missing", "未分配内部维护人"],
+            ["assigned", "已分配内部维护人"],
             ["unknown", "无法确认"],
           ])}
-          {select("reply", "维护者回复", [
+          {select("reply", "维护人回复", [
             ["", "全部"],
             ["replied", "已回复"],
             ["unreplied", "未回复"],

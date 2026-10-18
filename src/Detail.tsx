@@ -174,7 +174,7 @@ export function Detail({
               )
               .join(", ") || "未分配"}
           </dd>
-          <dt>工作量归属</dt>
+          <dt>内部维护人</dt>
           <dd>{i.workload_owner || "未分配"}</dd>
           <dt>内部责任归属</dt>
           <dd>

@@ -63,7 +63,7 @@ const cards: {
   },
   {
     key: "unreplied",
-    name: "未获维护者回复",
+    name: "未获维护人回复",
     color: "amber",
     filter: { reply: "unreplied" },
   },
@@ -687,7 +687,7 @@ function App() {
               </Chart>
               <Chart
                 title="未关闭 Issue 回复状态"
-                note="维护者回复独立于指派和超期状态，三项按回复状态互斥。"
+                note="维护人回复独立于指派和超期状态，三项按回复状态互斥。"
               >
                 <Bars
                   data={[

@@ -52,7 +52,7 @@ const presets: { label: string; params: Record<string, string> }[] = [
   { label: "🔥 已超期", params: { risk: "overdue" } },
   { label: "⚡ 即将超期", params: { risk: "soon" } },
   { label: "⏱️ 首响未达标", params: { state: "all", first_resp: "unqualified" } },
-  { label: "👤 缺内部责任人", params: { internal: "missing" } },
+  { label: "👤 缺内部维护人", params: { internal: "missing" } },
   { label: "💬 待维护人回复", params: { reply: "unreplied" } },
   { label: "🤖 含 AI 报告", params: { ai: "yes" } },
 ];

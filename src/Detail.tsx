@@ -179,9 +179,9 @@ export function Detail({
           <dt>内部责任归属</dt>
           <dd>
             {i.internal_assignment === "assigned"
-              ? "已分配内部责任人"
+              ? "已分配内部维护人"
               : i.internal_assignment === "missing"
-                ? "未分配内部责任人"
+                ? "未分配内部维护人"
                 : "无法确认"}
             。内部依据四仓成员并集及人工确认补充名单，跨仓统一认定；多人负责时有一位内部人员即视为已落实。
           </dd>

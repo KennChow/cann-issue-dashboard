@@ -62,7 +62,7 @@ export function InternalMembers({ data }: { data: Data }) {
         </div>
       </div>
       <p className="muted">
-        任一目标仓库的成员（含生态开发者），或人工补充名单中的人员，在四仓统一视为内部责任人。来源仓库不代表必须加入该仓库才能负责
+        任一目标仓库的成员（含生态开发者），或人工补充名单中的人员，在四仓统一视为内部维护人。来源仓库不代表必须加入该仓库才能负责
         Issue。维护人回复仍按 Issue 所属仓库成员判定。更新：
         {fmt(directory.checked_at)}
       </p>
@@ -106,7 +106,7 @@ export function InternalMembers({ data }: { data: Data }) {
                   </td>
                   <td>
                     <span className={`tag ${p.confirmed ? "blue" : "amber"}`}>
-                      {p.confirmed ? "内部责任人" : "待确认"}
+                      {p.confirmed ? "内部维护人" : "待确认"}
                     </span>
                   </td>
                   <td>

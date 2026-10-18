@@ -8,11 +8,11 @@ export function Badges({ i }: { i: Issue }) {
       </span>
       {i.metrics.unassigned && <span className="tag amber">未分配</span>}
       {i.metrics.no_internal_assignee && (
-        <span className="tag amber">未分配内部责任人</span>
+        <span className="tag amber">未分配内部维护人</span>
       )}
       {i.state === "open" &&
         (!i.internal_assignment || i.internal_assignment === "unknown") && (
-          <span className="tag">内部责任人无法确认</span>
+          <span className="tag">内部维护人无法确认</span>
         )}
       <span className={`tag ${i.reply_status === "unreplied" ? "amber" : ""}`}>
         {replyLabel[i.reply_status]}

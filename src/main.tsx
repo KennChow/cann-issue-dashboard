@@ -50,7 +50,7 @@ const cards: {
 }[] = [
   {
     key: "no_internal_assignee",
-    name: "未分配内部责任人",
+    name: "未分配内部维护人",
     color: "amber",
     filter: { internal: "missing" },
   },
@@ -263,7 +263,7 @@ function App() {
             href="#/members"
             className={view.includes("members") ? "active" : ""}
           >
-            内部责任人总表
+            内部维护人总表
           </a>
           <a href="#/duty" className={view.includes("duty") ? "active" : ""}>
             GE 责任田
@@ -281,7 +281,7 @@ function App() {
               {view.includes("duty")
                 ? "GE 责任田查询"
                 : view.includes("members")
-                  ? "内部责任人总表"
+                  ? "内部维护人总表"
                   : view.includes("issues")
                     ? "Issue 工作台"
                     : "让每一个问题得到回应"}
@@ -297,7 +297,7 @@ function App() {
                 data-no-export
                 onClick={() =>
                   exportView(
-                    view.includes("members") ? "内部责任人总表" : "大屏总览",
+                    view.includes("members") ? "内部维护人总表" : "大屏总览",
                     "main",
                     data.generated_at,
                   )
@@ -713,7 +713,7 @@ function App() {
                     <tr>
                       {[
                         "仓库",
-                        "未分配内部责任人",
+                        "未分配内部维护人",
                         "Open",
                         "未分配",
                         "未回复",
@@ -978,7 +978,7 @@ function App() {
                     }}
                   >
                     <option value="">全部</option>
-                    <option value="internal">内部责任人</option>
+                    <option value="internal">内部维护人</option>
                     <option value="external">外部开发者</option>
                   </select>
                   <select
@@ -994,7 +994,7 @@ function App() {
               </div>
               <p className="muted">
                 每条 Open Issue
-                仅计入首位内部责任人；无内部成员时计入首位责任人。顺序以 GitCode
+                仅计入首位内部维护人；无内部成员时计入首位责任人。顺序以 GitCode
                 Assignee 列表为准，人员合计等于 Open
                 总数。内部身份采用四仓成员并集及人工补充总表，跨仓统一认定。
               </p>

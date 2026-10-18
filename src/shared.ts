@@ -21,7 +21,7 @@ export function go(values: Record<string, string> = {}, view = "issues") {
 }
 
 export const memberLabel: Record<string, string> = {
-  internal: "内部责任人",
+  internal: "内部维护人",
   external: "外部开发者",
   unknown: "成员身份无法确认",
   mixed: "身份因仓库而异",

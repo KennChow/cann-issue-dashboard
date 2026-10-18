@@ -84,7 +84,7 @@ test("internal assignee label drills down and is included in HTML export", async
 }, testInfo) => {
   await page.goto("/");
   await page
-    .getByRole("button", { name: /未分配内部责任人.*查看 Issue/ })
+    .getByRole("button", { name: /未分配内部维护人.*查看 Issue/ })
     .click();
   await expect(page.getByLabel("是否已分配内部维护人", { exact: true })).toHaveValue(
     "missing",
@@ -93,7 +93,7 @@ test("internal assignee label drills down and is included in HTML export", async
     page
       .locator("table.issues tbody tr")
       .first()
-      .getByText("未分配内部责任人", { exact: true }),
+      .getByText("未分配内部维护人", { exact: true }),
   ).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("是否已分配内部维护人", { exact: true })).toHaveValue(
@@ -105,7 +105,7 @@ test("internal assignee label drills down and is included in HTML export", async
   const path = testInfo.outputPath("internal.html");
   await download.saveAs(path);
   const fs = await import("node:fs/promises");
-  expect(await fs.readFile(path, "utf8")).toContain("未分配内部责任人");
+  expect(await fs.readFile(path, "utf8")).toContain("未分配内部维护人");
 });
 test("workload cards label outsiders and drill down to unique ownership", async ({
   page,
@@ -150,7 +150,7 @@ test("owner role filtering persists and updates counts and drilldown", async ({
       Object.values(o.repo_roles).includes(role),
     );
     await expect(page.locator(".owner")).toHaveCount(expected.length);
-    const label = role === "external" ? "外部开发者" : "内部责任人";
+    const label = role === "external" ? "外部开发者" : "内部维护人";
     await expect(page.locator(".owner .owner-name .tag").first()).toHaveText(
       label,
     );
@@ -168,11 +168,11 @@ test("unified internal directory shows provenance and exports HTML", async ({
 }, testInfo) => {
   await page.goto("/#/members");
   await expect(
-    page.getByRole("heading", { name: "内部责任人总表", exact: true }),
+    page.getByRole("heading", { name: "内部维护人总表", exact: true }),
   ).toBeVisible();
   await page.getByLabel("搜索内部人员").fill("Chang-an-HW");
   await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(page.locator("tbody tr")).toContainText("内部责任人");
+  await expect(page.locator("tbody tr")).toContainText("内部维护人");
   await expect(page.locator("tbody tr")).toContainText("用户确认");
   const pending = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出总表 HTML" }).click();

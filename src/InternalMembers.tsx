@@ -1,27 +1,65 @@
 import { useState } from "react";
 import type { Data } from "./types";
 import { fmt, short, go } from "./shared";
+
 export function InternalMembers({ data }: { data: Data }) {
   const [query, setQuery] = useState("");
+  const [onlyWithOpen, setOnlyWithOpen] = useState(false);
   const directory = data.internal_directory;
   if (!directory)
     return <section className="panel">等待内部人员总表首次同步。</section>;
-  const people = directory.people.filter((p) =>
-    p.login.toLowerCase().includes(query.toLowerCase()),
+
+  const ownerMap = new Map(
+    data.owners.map((o) => [o.person.login.toLowerCase(), o]),
   );
+
+  const people = directory.people.filter((p) => {
+    const matchQuery =
+      !query.trim() ||
+      p.login.toLowerCase().includes(query.trim().toLowerCase()) ||
+      p.repos.some((r) => short(r).toLowerCase().includes(query.trim().toLowerCase()));
+    const openCount = ownerMap.get(p.login.toLowerCase())?.stats.open || 0;
+    return matchQuery && (!onlyWithOpen || openCount > 0);
+  });
+
   return (
     <section className="panel">
       <div className="toolbar">
         <h2>
           四仓联合内部人员 ·{" "}
           {directory.people.filter((p) => p.confirmed).length} 人
+          {query || onlyWithOpen ? (
+            <span className="count">{people.length}</span>
+          ) : null}
         </h2>
-        <input
-          aria-label="搜索内部人员"
-          placeholder="搜索 GitCode 用户名"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        <div className="owner-controls" data-no-export>
+          <button
+            type="button"
+            className={`chip-btn ${onlyWithOpen ? "active" : ""}`}
+            onClick={() => setOnlyWithOpen(!onlyWithOpen)}
+          >
+            仅看名下有 Open ({data.owners.filter((o) => o.role === "internal" && o.stats.open > 0).length})
+          </button>
+          <div className="input-clear-wrap">
+            <input
+              aria-label="搜索内部人员"
+              className={query ? "active-filter" : ""}
+              placeholder="搜索 GitCode 用户名"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {query && (
+              <button
+                type="button"
+                className="input-clear"
+                aria-label="清空搜索"
+                onClick={() => setQuery("")}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
       </div>
       <p className="muted">
         任一目标仓库的成员（含生态开发者），或人工补充名单中的人员，在四仓统一视为内部责任人。来源仓库不代表必须加入该仓库才能负责
@@ -46,25 +84,43 @@ export function InternalMembers({ data }: { data: Data }) {
           </thead>
           <tbody>
             {people.map((p) => {
-              const owner = data.owners.find(
-                (o) => o.person.login.toLowerCase() === p.login.toLowerCase(),
-              );
+              const owner = ownerMap.get(p.login.toLowerCase());
+              const openCount = owner?.stats.open || 0;
               return (
                 <tr key={p.login.toLowerCase()}>
                   <td>
-                    <a
-                      href={
-                        "https://gitcode.com/" + encodeURIComponent(p.login)
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {p.login}
-                    </a>
+                    <div className="member-cell">
+                      <b className="avatar avatar-sm" aria-hidden="true">
+                        {p.login.slice(0, 1).toUpperCase()}
+                      </b>
+                      <a
+                        href={
+                          "https://gitcode.com/" + encodeURIComponent(p.login)
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {p.login}
+                      </a>
+                    </div>
                   </td>
-                  <td>{p.confirmed ? "内部责任人" : "待确认"}</td>
                   <td>
-                    {p.repos.map(short).join("、") || "—"}
+                    <span className={`tag ${p.confirmed ? "blue" : "amber"}`}>
+                      {p.confirmed ? "内部责任人" : "待确认"}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="tags">
+                      {p.repos.length ? (
+                        p.repos.map((r) => (
+                          <span key={r} className="tag">
+                            {short(r)}
+                          </span>
+                        ))
+                      ) : (
+                        <span>—</span>
+                      )}
+                    </div>
                     {p.stale_repos.length > 0 && (
                       <small className="amber">
                         上次来源（待刷新）：
@@ -75,10 +131,10 @@ export function InternalMembers({ data }: { data: Data }) {
                   <td>{p.explicit_reason || "—"}</td>
                   <td>
                     <button
-                      className="text blue"
+                      className={`text ${openCount > 0 ? "blue strong-num" : "zero"}`}
                       onClick={() => go({ workload_owner: p.login })}
                     >
-                      {owner?.stats.open || 0}
+                      {openCount}
                     </button>
                   </td>
                 </tr>

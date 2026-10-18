@@ -1,29 +1,61 @@
 import { useEffect, useMemo, useState } from "react";
 import { dutyIndex, geFields, parseDuty, searchDuty } from "./duty";
-import type { DutyData, DutyField } from "./duty";
+import type { DutyData, DutyField, DutyMatch } from "./duty";
+
+const kindColor: Record<DutyMatch["kind"], string> = {
+  明确归属: "green",
+  包含的责任田: "blue",
+  目录规则推断: "blue",
+  模糊候选: "amber",
+  拼写近似: "amber",
+  兜底归属: "",
+};
 
 function People({ fields, data }: { fields: DutyField[]; data: DutyData }) {
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const people = fields.length
     ? fields
     : [{ module: "GE", ...data.repo_fallbacks.ge }];
   return (
-    <>
-      {people.map((f, i) => (
-        <div key={i}>
-          <strong>{f.owner.name}</strong> / {f.committer.name}
-          <small className="muted">
-            {f.module} · {f.sub_field}
-            {!fields.length && "（兜底）"}
-          </small>
-        </div>
-      ))}
-    </>
+    <div className="duty-people-list">
+      {people.map((f, i) => {
+        const text = `田主: ${f.owner.name} / Committer: ${f.committer.name} (${f.module} · ${f.sub_field})`;
+        return (
+          <div key={i} className="duty-person-item">
+            <div>
+              <strong>{f.owner.name}</strong> <span className="muted">/</span>{" "}
+              {f.committer.name}
+              <small className="muted">
+                {f.module} · {f.sub_field}
+                {!fields.length && "（兜底）"}
+              </small>
+            </div>
+            <button
+              type="button"
+              className="btn-xs"
+              onClick={() => {
+                navigator.clipboard
+                  ?.writeText(text)
+                  .then(() => {
+                    setCopiedIdx(i);
+                    setTimeout(() => setCopiedIdx(null), 1500);
+                  })
+                  .catch(() => {});
+              }}
+            >
+              {copiedIdx === i ? "已复制 ✓" : "复制"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
 export function Duty() {
   const [data, setData] = useState<DutyData>();
   const [query, setQuery] = useState("");
+  const [moduleFilter, setModuleFilter] = useState("");
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const index = useMemo(() => (data ? dutyIndex(data) : []), [data]);
@@ -51,26 +83,51 @@ export function Duty() {
     return () => controller.abort();
   }, [attempt]);
 
+  const allGeFields = data ? geFields(data) : [];
+  const modules = Array.from(new Set(allGeFields.map((f) => f.module)));
+  const visibleFields = moduleFilter
+    ? allGeFields.filter((f) => f.module === moduleFilter)
+    : allGeFields;
+
   return (
     <div className="duty-view">
       {data && (
         <section className="panel duty-search">
           <h2>查找田主与 Committer</h2>
           <label htmlFor="duty-query">GE 仓库链接、文件路径或关键词</label>
-          <input
-            id="duty-query"
-            value={query}
-            placeholder="例如 compiler/graph/build/stream、stream_allocator.cc、内存"
-            autoComplete="off"
-            onChange={(e) => setQuery(e.target.value)}
-          />
+          <div className="input-clear-wrap duty-input-wrap">
+            <input
+              id="duty-query"
+              className={query.trim() ? "active-filter" : ""}
+              value={query}
+              placeholder="例如 compiler/graph/build/stream、stream_allocator.cc、内存"
+              autoComplete="off"
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {query && (
+              <button
+                type="button"
+                className="input-clear"
+                aria-label="清空查询"
+                onClick={() => setQuery("")}
+              >
+                ×
+              </button>
+            )}
+          </div>
           <p className="muted">
             支持 GitCode / GitHub
             文件与目录链接、绝对路径、相对路径、名称片段和近似拼写。多个候选全部列出；明确路径按最长目录前缀归属。查询不会上传。
           </p>
           <div className="duty-shortcuts">
+            <span className="muted">常用示例：</span>
             {["examples", "docs", "stream_allocator.cc", "内存"].map((q) => (
-              <button key={q} onClick={() => setQuery(q)}>
+              <button
+                key={q}
+                type="button"
+                className={`chip-btn ${query === q ? "active" : ""}`}
+                onClick={() => setQuery(q)}
+              >
                 {q}
               </button>
             ))}
@@ -82,8 +139,8 @@ export function Duty() {
           )}
           {query.trim() && !result.error && (
             <>
-              <p role="status">
-                共 {result.matches.length}{" "}
+              <p role="status" className="duty-status">
+                共 <strong>{result.matches.length}</strong>{" "}
                 个匹配路径，全部展示。模糊候选需结合路径确认。
               </p>
               {result.matches.length ? (
@@ -103,7 +160,9 @@ export function Duty() {
                             <code>{m.path}</code>
                           </td>
                           <td>
-                            <span className="tag">{m.kind}</span>
+                            <span className={`tag ${kindColor[m.kind] || ""}`}>
+                              {m.kind}
+                            </span>
                           </td>
                           <td>
                             <People fields={m.fields} data={data} />
@@ -123,7 +182,30 @@ export function Duty() {
         </section>
       )}
       <section className="panel">
-        <h2>GE 责任田分工表</h2>
+        <div className="toolbar">
+          <h2>GE 责任田分工表</h2>
+          {modules.length > 1 && (
+            <div className="duty-shortcuts">
+              <button
+                type="button"
+                className={`chip-btn ${!moduleFilter ? "active" : ""}`}
+                onClick={() => setModuleFilter("")}
+              >
+                全部模块
+              </button>
+              {modules.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={`chip-btn ${moduleFilter === m ? "active" : ""}`}
+                  onClick={() => setModuleFilter(m)}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <p className="muted">
           按模块查看目录分工，或在上方输入路径查找田主和 Committer。
         </p>
@@ -136,7 +218,7 @@ export function Duty() {
         ) : (
           <>
             <p className="muted">
-              {geFields(data).length} 个责任田 · {data.files?.length || 0}{" "}
+              {allGeFields.length} 个责任田 · {data.files?.length || 0}{" "}
               个索引文件
             </p>
             {!data.files && (
@@ -156,10 +238,14 @@ export function Duty() {
                   </tr>
                 </thead>
                 <tbody>
-                  {geFields(data).map((f, i) => (
+                  {visibleFields.map((f, i) => (
                     <tr key={i}>
-                      <td>{f.module}</td>
-                      <td>{f.sub_field}</td>
+                      <td>
+                        <span className="tag blue">{f.module}</span>
+                      </td>
+                      <td>
+                        <strong>{f.sub_field}</strong>
+                      </td>
                       <td>{f.owner.name}</td>
                       <td>{f.committer.name}</td>
                       <td>
@@ -176,7 +262,7 @@ export function Duty() {
                 </tbody>
               </table>
             </div>
-            <p>
+            <p className="fallback-note">
               其他部分（兜底）：田主{" "}
               <strong>{data.repo_fallbacks.ge.owner.name}</strong> / Committer{" "}
               <strong>{data.repo_fallbacks.ge.committer.name}</strong>

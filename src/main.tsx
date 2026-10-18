@@ -60,6 +60,7 @@ function App() {
   const [error, setError] = useState("");
   const [hash, setHash] = useState(location.hash);
   const [ownerSort, setOwnerSort] = useState("open");
+  const [ownerSearch, setOwnerSearch] = useState("");
   useEffect(() => {
     const fn = () => setHash(location.hash);
     addEventListener("hashchange", fn);
@@ -78,22 +79,30 @@ function App() {
   if (error)
     return (
       <main>
-        <h1>数据加载失败</h1>
-        <p>{error}</p>
-        <button onClick={() => location.reload()}>重试</button>
+        <div className="state-box error">
+          <h1>数据加载失败</h1>
+          <p>{error}</p>
+          <button onClick={() => location.reload()}>重试</button>
+        </div>
       </main>
     );
   if (!data)
     return (
       <main>
-        <h1>CANN · Issue 闭环监控</h1>
-        <p role="status">正在读取同步数据…</p>
+        <div className="state-box">
+          <h1>CANN · Issue 闭环监控</h1>
+          <p role="status">正在读取同步数据…</p>
+        </div>
       </main>
     );
   const all = Object.values(data.repositories).flatMap((r) => r.issues);
   const p = params();
   const ownerRole = p.get("owner_role") || "";
-  const visibleOwners = filterOwners(data, ownerRole);
+  const visibleOwners = filterOwners(data, ownerRole).filter(
+    (o) =>
+      !ownerSearch.trim() ||
+      o.person.login.toLowerCase().includes(ownerSearch.trim().toLowerCase()),
+  );
   const view = hash.split("?")[0];
   const selected = all.find((i) => i.id === p.get("id"));
   const repo = p.get("repo") || "";
@@ -114,6 +123,7 @@ function App() {
         i.metrics.age_hours <= b.max,
     ).length,
   }));
+  const maxOwnerOpen = Math.max(...visibleOwners.map((o) => o.stats.open), 1);
   return (
     <>
       <header>
@@ -126,7 +136,9 @@ function App() {
         <nav>
           <a
             className={
-              !view.includes("issues") && !view.includes("members") && !view.includes("duty")
+              !view.includes("issues") &&
+              !view.includes("members") &&
+              !view.includes("duty")
                 ? "active"
                 : ""
             }
@@ -159,19 +171,22 @@ function App() {
           <div>
             <p className="eyebrow">COMMUNITY OPERATIONS / 闭环监控</p>
             <h1>
-              {view.includes("duty") ? "GE 责任田查询" : view.includes("members")
-                ? "内部责任人总表"
-                : view.includes("issues")
-                  ? "Issue 工作台"
-                  : "让每一个问题得到回应"}
+              {view.includes("duty")
+                ? "GE 责任田查询"
+                : view.includes("members")
+                  ? "内部责任人总表"
+                  : view.includes("issues")
+                    ? "Issue 工作台"
+                    : "让每一个问题得到回应"}
             </h1>
             <p className="muted">
               四仓公共 Issue · 责任归属 · 响应追踪 · 14 天闭环预警
             </p>
           </div>
-          <div>
+          <div className="heading-actions">
             {!view.includes("issues") && !view.includes("duty") && (
               <button
+                className="btn-secondary"
                 data-no-export
                 onClick={() =>
                   exportView(
@@ -215,7 +230,9 @@ function App() {
             )}
           </details>
         )}
-        {view.includes("duty") ? <Duty /> : view.includes("members") ? (
+        {view.includes("duty") ? (
+          <Duty />
+        ) : view.includes("members") ? (
           <InternalMembers data={data} />
         ) : view.includes("issues") ? (
           <IssueList issues={all} hash={hash} at={data.generated_at} />
@@ -227,6 +244,7 @@ function App() {
               </h2>
               <select
                 aria-label="总览仓库"
+                className={repo ? "active-filter" : ""}
                 value={repo}
                 onChange={(e) =>
                   go(
@@ -330,23 +348,40 @@ function App() {
                       <tr key={name}>
                         <td>
                           <button
-                            className="text"
+                            className="text repo-link"
                             onClick={() => go({ repo: name })}
                           >
                             {short(name)}
                           </button>
                         </td>
-                        {cards.slice(0, 7).map((c) => (
-                          <td key={c.key}>
-                            <button
-                              className={`text ${c.color}`}
-                              onClick={() => go({ repo: name, ...c.filter })}
-                            >
-                              {r.stats[c.key]}
-                            </button>
-                          </td>
-                        ))}
-                        <td>{r.stats.closure_rate ?? "—"}%</td>
+                        {cards.slice(0, 7).map((c) => {
+                          const val = r.stats[c.key];
+                          const isZeroRisk =
+                            val === 0 &&
+                            (c.color === "red" || c.color === "amber");
+                          return (
+                            <td key={c.key}>
+                              <button
+                                className={`text ${isZeroRisk ? "zero" : c.color}`}
+                                onClick={() => go({ repo: name, ...c.filter })}
+                              >
+                                {val}
+                              </button>
+                            </td>
+                          );
+                        })}
+                        <td>
+                          <div className="rate-cell">
+                            <span>{r.stats.closure_rate ?? "—"}%</span>
+                            {r.stats.closure_rate !== null && (
+                              <span className="mini-bar" aria-hidden="true">
+                                <i
+                                  style={{ width: `${r.stats.closure_rate}%` }}
+                                />
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="muted">{fmt(r.last_success)}</td>
                       </tr>
                     ))}
@@ -381,10 +416,20 @@ function App() {
             </div>
             <section className="panel">
               <div className="toolbar">
-                <h2>责任人名下 Issue 数量</h2>
+                <h2>
+                  责任人名下 Issue 数量{" "}
+                  <span className="count">{visibleOwners.length}</span>
+                </h2>
                 <div className="owner-controls">
+                  <input
+                    aria-label="搜索责任人"
+                    placeholder="过滤责任人用户名…"
+                    value={ownerSearch}
+                    onChange={(e) => setOwnerSearch(e.target.value)}
+                  />
                   <select
                     aria-label="责任人类型"
+                    className={ownerRole ? "active-filter" : ""}
                     value={ownerRole}
                     onChange={(e) => {
                       e.target.value
@@ -424,61 +469,87 @@ function App() {
                       Number(b.stats[ownerSort as keyof Stats]) -
                       Number(a.stats[ownerSort as keyof Stats]),
                   )
-                  .map((o) => (
-                    <button
-                      key={o.person.login}
-                      className="owner"
-                      onClick={() =>
-                        go({
-                          workload_owner: o.person.login,
-                          ...(ownerRole ? { workload_role: ownerRole } : {}),
-                        })
-                      }
-                    >
-                      <div className="owner-name">
-                        {o.person.avatar ? (
-                          <img
-                            src={o.person.avatar}
-                            alt=""
-                            loading="lazy"
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <b className="avatar">
-                            {o.person.login.slice(0, 1).toUpperCase()}
-                          </b>
-                        )}
-                        <strong>{o.person.login}</strong>
-                        <span
-                          className={`tag ${o.role === "external" ? "amber" : ""}`}
-                        >
-                          {memberLabel[o.role] || memberLabel.unknown}
-                        </span>
-                        <b>{o.stats.open}</b>
-                      </div>
-                      <div className="workbar">
-                        <i
-                          style={{
-                            width: `${(o.stats.open / Math.max(...visibleOwners.map((o) => o.stats.open), 1)) * 100}%`,
-                          }}
-                        />
-                      </div>
-                      <div className="tags">
-                        <span>正常 {o.stats.normal}</span>
-                        <span className="amber">
-                          未回复 {o.stats.unreplied} · 临期 {o.stats.due_soon}
-                        </span>
-                        <span className="red">超期 {o.stats.overdue}</span>
-                      </div>
-                      <small>
-                        {Object.entries(o.repos)
-                          .map(([r, n]) => `${short(r)} ${n}`)
-                          .join(" / ")}
-                      </small>
-                    </button>
-                  ))}
+                  .map((o) => {
+                    const normalPct = (o.stats.normal / maxOwnerOpen) * 100;
+                    const soonPct = (o.stats.due_soon / maxOwnerOpen) * 100;
+                    const overduePct = (o.stats.overdue / maxOwnerOpen) * 100;
+                    return (
+                      <button
+                        key={o.person.login}
+                        className="owner"
+                        onClick={() =>
+                          go({
+                            workload_owner: o.person.login,
+                            ...(ownerRole ? { workload_role: ownerRole } : {}),
+                          })
+                        }
+                      >
+                        <div className="owner-name">
+                          {o.person.avatar ? (
+                            <img
+                              src={o.person.avatar}
+                              alt=""
+                              loading="lazy"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <b className="avatar">
+                              {o.person.login.slice(0, 1).toUpperCase()}
+                            </b>
+                          )}
+                          <strong>{o.person.login}</strong>
+                          <span
+                            className={`tag ${o.role === "external" ? "amber" : "blue"}`}
+                          >
+                            {memberLabel[o.role] || memberLabel.unknown}
+                          </span>
+                          <b>{o.stats.open}</b>
+                        </div>
+                        <div className="workbar" aria-hidden="true">
+                          {normalPct > 0 && (
+                            <i
+                              className="seg-normal"
+                              style={{ width: `${normalPct}%` }}
+                            />
+                          )}
+                          {soonPct > 0 && (
+                            <i
+                              className="seg-soon"
+                              style={{ width: `${soonPct}%` }}
+                            />
+                          )}
+                          {overduePct > 0 && (
+                            <i
+                              className="seg-overdue"
+                              style={{ width: `${overduePct}%` }}
+                            />
+                          )}
+                        </div>
+                        <div className="tags">
+                          <span className="green">正常 {o.stats.normal}</span>
+                          <span
+                            className={
+                              o.stats.unreplied || o.stats.due_soon
+                                ? "amber"
+                                : "muted"
+                            }
+                          >
+                            未回复 {o.stats.unreplied} · 临期 {o.stats.due_soon}
+                          </span>
+                          <span className={o.stats.overdue ? "red" : "muted"}>
+                            超期 {o.stats.overdue}
+                          </span>
+                        </div>
+                        <small>
+                          {Object.entries(o.repos)
+                            .map(([r, n]) => `${short(r)} ${n}`)
+                            .join(" / ")}
+                        </small>
+                      </button>
+                    );
+                  })}
               </div>
             </section>
           </>
@@ -497,7 +568,12 @@ function App() {
       {selected && (
         <Detail
           issue={selected}
+          issues={all}
           at={data.generated_at}
+          onSelect={(id) => {
+            p.set("id", id);
+            go(Object.fromEntries(p));
+          }}
           close={() => {
             p.delete("id");
             go(Object.fromEntries(p));

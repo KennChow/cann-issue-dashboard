@@ -2,6 +2,47 @@ import type { Issue } from "./types";
 import { fmt, short, go } from "./shared";
 import { Badges } from "./Badges";
 import { exportIssues } from "./export";
+
+const filterLabels: Record<string, string> = {
+  q: "关键词",
+  repo: "仓库",
+  owner: "责任人",
+  workload_owner: "工作量归属",
+  workload_role: "归属人身份",
+  author: "创建者",
+  state: "状态",
+  assignment: "责任分配",
+  internal: "内部责任人",
+  reply: "维护者回复",
+  risk: "期限预警",
+  ai: "AI 分析",
+  from: "创建自",
+  to: "创建至",
+};
+
+const filterValueLabels: Record<string, Record<string, string>> = {
+  workload_role: { internal: "内部责任人", external: "外部开发者" },
+  state: { open: "Open", closed: "Closed", all: "全部" },
+  assignment: { yes: "已分配", no: "未分配" },
+  internal: {
+    missing: "未分配内部责任人",
+    assigned: "已分配内部责任人",
+    unknown: "无法确认",
+  },
+  reply: { replied: "已回复", unreplied: "未回复", unknown: "无法确认" },
+  risk: { normal: "正常", soon: "即将超期", overdue: "已超期" },
+  ai: { yes: "存在报告", no: "无报告" },
+};
+
+const presets: { label: string; params: Record<string, string> }[] = [
+  { label: "全部 Open", params: {} },
+  { label: "🔥 已超期", params: { risk: "overdue" } },
+  { label: "⚡ 即将超期", params: { risk: "soon" } },
+  { label: "👤 缺内部责任人", params: { internal: "missing" } },
+  { label: "💬 待维护者回复", params: { reply: "unreplied" } },
+  { label: "🤖 含 AI 报告", params: { ai: "yes" } },
+];
+
 export function IssueList({
   issues,
   hash,
@@ -79,121 +120,197 @@ export function IssueList({
       Number(value("page", "1")) || 1,
     ),
   );
-  const select = (key: string, label: string, options: [string, string][]) => (
-    <label>
-      {label}
-      <select
-        aria-label={label}
-        value={value(key, key === "state" ? "open" : "")}
-        onChange={(e) => set(key, e.target.value)}
-      >
-        {options.map(([v, n]) => (
-          <option key={v} value={v}>
-            {n}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+  const select = (key: string, label: string, options: [string, string][]) => {
+    const def = key === "state" ? "open" : "";
+    const cur = value(key, def);
+    const isActive = cur !== def;
+    return (
+      <label className={isActive ? "active-label" : ""}>
+        {label}
+        <select
+          aria-label={label}
+          className={isActive ? "active-filter" : ""}
+          value={cur}
+          onChange={(e) => set(key, e.target.value)}
+        >
+          {options.map(([v, n]) => (
+            <option key={v} value={v}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  };
+
+  const activeEntries = Object.keys(filterLabels).flatMap((k) => {
+    const def = k === "state" ? "open" : "";
+    const v = value(k, def);
+    if (v === def) return [];
+    const displayVal =
+      k === "repo"
+        ? short(v)
+        : filterValueLabels[k]?.[v] || v;
+    return [{ key: k, label: filterLabels[k], value: displayVal }];
+  });
+
+  const selectedId = value("id");
+
   return (
     <>
-      <section className="panel filters">
-        <label className="search">
-          搜索标题 / 编号
-          <input
-            placeholder="输入关键词或 #168"
-            value={value("q")}
-            onChange={(e) => set("q", e.target.value)}
-          />
-        </label>
-        {select("repo", "仓库", [
-          ["", "全部仓库"],
-          ...Array.from(new Set(issues.map((i) => i.repo))).map(
-            (r) => [r, short(r)] as [string, string],
-          ),
-        ])}
-        {select("owner", "责任人", [
-          ["", "全部责任人"],
-          ["未分配", "未分配"],
-          ...Array.from(
-            new Set(issues.flatMap((i) => i.assignees.map((a) => a.login))),
-          )
-            .sort()
-            .map((a) => [a, a] as [string, string]),
-        ])}
-        {select("workload_owner", "工作量归属", [
-          ["", "全部"],
-          ...Array.from(
-            new Set(issues.map((i) => i.workload_owner || "未分配")),
-          )
-            .sort()
-            .map((n) => [n, n] as [string, string]),
-        ])}
-        {select("workload_role", "归属人身份", [
-          ["", "全部"],
-          ["internal", "内部责任人"],
-          ["external", "外部开发者"],
-        ])}
-        {select("author", "创建者", [
-          ["", "全部创建者"],
-          ...Array.from(new Set(issues.map((i) => i.author.login)))
-            .sort()
-            .map((a) => [a, a] as [string, string]),
-        ])}
-        {select("state", "状态", [
-          ["open", "Open"],
-          ["closed", "Closed"],
-          ["all", "全部"],
-        ])}
-        {select("assignment", "责任分配", [
-          ["", "全部"],
-          ["yes", "已分配"],
-          ["no", "未分配"],
-        ])}
-        {select("internal", "内部责任人", [
-          ["", "全部"],
-          ["missing", "未分配内部责任人"],
-          ["assigned", "已分配内部责任人"],
-          ["unknown", "无法确认"],
-        ])}
-        {select("reply", "维护者回复", [
-          ["", "全部"],
-          ["replied", "已回复"],
-          ["unreplied", "未回复"],
-          ["unknown", "无法确认"],
-        ])}
-        {select("risk", "期限预警", [
-          ["", "全部"],
-          ["normal", "正常"],
-          ["soon", "即将超期"],
-          ["overdue", "已超期"],
-        ])}
-        {select("ai", "AI 分析", [
-          ["", "全部"],
-          ["yes", "存在报告"],
-          ["no", "无报告"],
-        ])}
-        <label>
-          创建自
-          <input
-            type="date"
-            value={value("from")}
-            onChange={(e) => set("from", e.target.value)}
-          />
-        </label>
-        <label>
-          创建至
-          <input
-            type="date"
-            value={value("to")}
-            onChange={(e) => set("to", e.target.value)}
-          />
-        </label>
-        <button onClick={() => go()}>重置筛选</button>
+      <section className="panel filters-panel">
+        <div className="presets-bar" data-no-export>
+          <span className="muted">快捷视角：</span>
+          {presets.map((pr) => {
+            const entries = Object.entries(pr.params);
+            const isMatch =
+              entries.length === 0
+                ? activeEntries.length === 0
+                : activeEntries.length === entries.length &&
+                  entries.every(([k, v]) => value(k) === v);
+            return (
+              <button
+                key={pr.label}
+                type="button"
+                className={`chip-btn ${isMatch ? "active" : ""}`}
+                onClick={() => go(pr.params)}
+              >
+                {pr.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="filters">
+          <label className={`search ${value("q") ? "active-label" : ""}`}>
+            搜索标题 / 编号
+            <div className="input-clear-wrap">
+              <input
+                className={value("q") ? "active-filter" : ""}
+                placeholder="输入关键词或 #168"
+                value={value("q")}
+                onChange={(e) => set("q", e.target.value)}
+              />
+              {value("q") && (
+                <button
+                  type="button"
+                  className="input-clear"
+                  aria-label="清空搜索"
+                  onClick={() => set("q", "")}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </label>
+          {select("repo", "仓库", [
+            ["", "全部仓库"],
+            ...Array.from(new Set(issues.map((i) => i.repo))).map(
+              (r) => [r, short(r)] as [string, string],
+            ),
+          ])}
+          {select("owner", "责任人", [
+            ["", "全部责任人"],
+            ["未分配", "未分配"],
+            ...Array.from(
+              new Set(issues.flatMap((i) => i.assignees.map((a) => a.login))),
+            )
+              .sort()
+              .map((a) => [a, a] as [string, string]),
+          ])}
+          {select("workload_owner", "工作量归属", [
+            ["", "全部"],
+            ...Array.from(
+              new Set(issues.map((i) => i.workload_owner || "未分配")),
+            )
+              .sort()
+              .map((n) => [n, n] as [string, string]),
+          ])}
+          {select("workload_role", "归属人身份", [
+            ["", "全部"],
+            ["internal", "内部责任人"],
+            ["external", "外部开发者"],
+          ])}
+          {select("author", "创建者", [
+            ["", "全部创建者"],
+            ...Array.from(new Set(issues.map((i) => i.author.login)))
+              .sort()
+              .map((a) => [a, a] as [string, string]),
+          ])}
+          {select("state", "状态", [
+            ["open", "Open"],
+            ["closed", "Closed"],
+            ["all", "全部"],
+          ])}
+          {select("assignment", "责任分配", [
+            ["", "全部"],
+            ["yes", "已分配"],
+            ["no", "未分配"],
+          ])}
+          {select("internal", "内部责任人", [
+            ["", "全部"],
+            ["missing", "未分配内部责任人"],
+            ["assigned", "已分配内部责任人"],
+            ["unknown", "无法确认"],
+          ])}
+          {select("reply", "维护者回复", [
+            ["", "全部"],
+            ["replied", "已回复"],
+            ["unreplied", "未回复"],
+            ["unknown", "无法确认"],
+          ])}
+          {select("risk", "期限预警", [
+            ["", "全部"],
+            ["normal", "正常"],
+            ["soon", "即将超期"],
+            ["overdue", "已超期"],
+          ])}
+          {select("ai", "AI 分析", [
+            ["", "全部"],
+            ["yes", "存在报告"],
+            ["no", "无报告"],
+          ])}
+          <label className={value("from") ? "active-label" : ""}>
+            创建自
+            <input
+              type="date"
+              className={value("from") ? "active-filter" : ""}
+              value={value("from")}
+              onChange={(e) => set("from", e.target.value)}
+            />
+          </label>
+          <label className={value("to") ? "active-label" : ""}>
+            创建至
+            <input
+              type="date"
+              className={value("to") ? "active-filter" : ""}
+              value={value("to")}
+              onChange={(e) => set("to", e.target.value)}
+            />
+          </label>
+          <button onClick={() => go()}>重置筛选</button>
+        </div>
+        {activeEntries.length > 0 && (
+          <div className="active-chips" data-no-export>
+            <span className="muted">当前条件：</span>
+            {activeEntries.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className="filter-chip"
+                onClick={() => set(item.key, item.key === "state" ? "open" : "")}
+              >
+                <span>{item.label}：</span>
+                <strong>{item.value}</strong>
+                <i aria-hidden="true">×</i>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
       <section className="panel">
         <div className="toolbar">
           <button
+            className="btn-secondary"
             data-no-export
             onClick={() => exportIssues(filtered, at, p.toString())}
           >
@@ -231,7 +348,16 @@ export function IssueList({
             </thead>
             <tbody>
               {filtered.slice((page - 1) * 25, page * 25).map((i) => (
-                <tr key={i.id}>
+                <tr
+                  key={i.id}
+                  className={`issue-row ${selectedId === i.id ? "active-row" : ""}`}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest("a, button")) return;
+                    p.set("id", i.id);
+                    go(Object.fromEntries(p));
+                  }}
+                >
                   <td>
                     <small className="blue">
                       {short(i.repo)} #{i.number}
@@ -250,7 +376,9 @@ export function IssueList({
                     </a>
                   </td>
                   <td>
-                    {i.assignees.map((a) => a.login).join(", ") || "未分配"}
+                    {i.assignees.map((a) => a.login).join(", ") || (
+                      <span className="amber">未分配</span>
+                    )}
                     <small className="muted">创建者 {i.author.login}</small>
                   </td>
                   <td>
@@ -261,8 +389,16 @@ export function IssueList({
                     <small className="muted">{fmt(i.updated_at)}</small>
                   </td>
                   <td>
-                    {(i.metrics.age_hours / 24).toFixed(1)} 天
-                    <small className={i.metrics.overdue ? "red" : "muted"}>
+                    <strong>{(i.metrics.age_hours / 24).toFixed(1)}</strong> 天
+                    <small
+                      className={
+                        i.metrics.overdue
+                          ? "red"
+                          : i.metrics.due_soon
+                            ? "amber"
+                            : "muted"
+                      }
+                    >
                       {i.state === "closed"
                         ? "已关闭"
                         : i.metrics.overdue
@@ -280,7 +416,7 @@ export function IssueList({
                     </div>
                     {i.reports[0] && (
                       <a
-                        className="purple"
+                        className="purple report-link"
                         href={i.reports[0].url}
                         target="_blank"
                         rel="noreferrer"

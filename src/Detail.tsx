@@ -1,25 +1,51 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { Issue } from "./types";
 import { fmt, memberLabel } from "./shared";
 import { Badges } from "./Badges";
 import { exportView } from "./export";
+
 export function Detail({
   issue: i,
+  issues = [],
+  onSelect,
   close,
   at,
 }: {
   issue: Issue;
+  issues?: Issue[];
+  onSelect?: (id: string) => void;
   close: () => void;
   at: string;
 }) {
+  const [copied, setCopied] = useState(false);
+  const idx = issues.findIndex((x) => x.id === i.id);
+  const prevIssue = idx > 0 ? issues[idx - 1] : undefined;
+  const nextIssue =
+    idx >= 0 && idx < issues.length - 1 ? issues[idx + 1] : undefined;
+
+  useEffect(() => {
+    setCopied(false);
+  }, [i.id]);
+
   useEffect(() => {
     const old = document.activeElement as HTMLElement;
     document.getElementById("detail-close")?.focus();
     const fn = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
+      if (onSelect && (e.key === "ArrowLeft" || e.key === "k") && prevIssue) {
+        onSelect(prevIssue.id);
+      } else if (
+        onSelect &&
+        (e.key === "ArrowRight" || e.key === "j") &&
+        nextIssue
+      ) {
+        onSelect(nextIssue.id);
+      }
       if (e.key === "Tab") {
         const nodes = Array.from(
-          document.querySelectorAll<HTMLElement>(".drawer button,.drawer a"),
+          document.querySelectorAll<HTMLElement>(
+            ".drawer button:not(:disabled),.drawer a",
+          ),
         );
         const first = nodes[0],
           last = nodes[nodes.length - 1];
@@ -40,7 +66,18 @@ export function Detail({
       document.body.style.overflow = overflow;
       old?.focus();
     };
-  }, []);
+  }, [i.id, prevIssue, nextIssue]);
+
+  const copyRef = () => {
+    navigator.clipboard
+      ?.writeText(`${i.repo}#${i.number} ${i.title}\n${i.url}`)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      })
+      .catch(() => {});
+  };
+
   return (
     <div className="overlay" onClick={close}>
       <aside
@@ -50,28 +87,68 @@ export function Detail({
         aria-labelledby="detail-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="toolbar">
-          <span className="blue">
-            {i.repo} #{i.number}
-          </span>
-          <button
-            data-no-export
-            onClick={() => exportView("Issue-" + i.number, ".drawer", at)}
-          >
-            导出详情 HTML
-          </button>
-          <button data-no-export id="detail-close" onClick={close}>
-            关闭 ×
-          </button>
+        <div className="toolbar drawer-toolbar">
+          <div className="drawer-id-group">
+            <span className="blue">
+              {i.repo} #{i.number}
+            </span>
+            <button
+              type="button"
+              className="btn-xs"
+              data-no-export
+              onClick={copyRef}
+            >
+              {copied ? "已复制 ✓" : "复制引用"}
+            </button>
+          </div>
+          <div className="drawer-actions" data-no-export>
+            {onSelect && issues.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  className="btn-xs"
+                  disabled={!prevIssue}
+                  title="快捷键: ← 或 K"
+                  onClick={() => prevIssue && onSelect(prevIssue.id)}
+                >
+                  ← 上一条
+                </button>
+                <button
+                  type="button"
+                  className="btn-xs"
+                  disabled={!nextIssue}
+                  title="快捷键: → 或 J"
+                  onClick={() => nextIssue && onSelect(nextIssue.id)}
+                >
+                  下一条 →
+                </button>
+              </>
+            )}
+            <button
+              className="btn-secondary"
+              data-no-export
+              onClick={() => exportView("Issue-" + i.number, ".drawer", at)}
+            >
+              导出详情 HTML
+            </button>
+            <button data-no-export id="detail-close" onClick={close}>
+              关闭 ×
+            </button>
+          </div>
         </div>
         <h2 id="detail-title">{i.title}</h2>
         <Badges i={i} />
         <p>
-          <a href={i.url} target="_blank" rel="noreferrer">
+          <a
+            className="external-cta"
+            href={i.url}
+            target="_blank"
+            rel="noreferrer"
+          >
             在 GitCode 跟进 ↗
           </a>
         </p>
-        <dl>
+        <dl className="meta-grid">
           <dt>创建者</dt>
           <dd>{i.author.login}</dd>
           <dt>负责人</dt>
@@ -133,12 +210,21 @@ export function Detail({
               : []),
           ]
             .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
-            .map((e, n) => (
-              <li key={n}>
-                {fmt(e.at)} · {e.kind}
-                {e.detail && <small>{e.detail}</small>}
-              </li>
-            ))}
+            .map((e, n) => {
+              const dotClass = e.kind.includes("回复")
+                ? "dot-green"
+                : e.kind.includes("关闭")
+                  ? "dot-purple"
+                  : e.kind.includes("创建")
+                    ? "dot-blue"
+                    : "dot-amber";
+              return (
+                <li key={n} className={dotClass}>
+                  <strong>{e.kind}</strong> · <span>{fmt(e.at)}</span>
+                  {e.detail && <small>{e.detail}</small>}
+                </li>
+              );
+            })}
         </ol>
         <p className="muted">
           观测事件为采集发现时刻，不推断首次采集前的指派与重开历史；最近保留 100
@@ -151,7 +237,7 @@ export function Detail({
         {i.comments.map((c) => (
           <article className="comment" key={c.id}>
             <small>
-              {c.author.login} · {fmt(c.created_at)}
+              <strong>{c.author.login}</strong> · {fmt(c.created_at)}
             </small>
             <pre>{c.body}</pre>
           </article>

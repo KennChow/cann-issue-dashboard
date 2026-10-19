@@ -67,7 +67,18 @@ class ReportTests(unittest.TestCase):
         i2['metrics'] = {'age_hours': 73.0, 'remaining_hours': 263.0, 'due_soon': False,
                          'overdue': False, 'unreplied': True, 'no_internal_assignee': True, 'unassigned': True}
 
-        before = snapshot([i1, i2])
+        i3 = item(3)
+        i3['created_at'] = '2026-10-14T16:00:00Z'  # 10 hours before generated_at -> <= 24h workday
+        i3['comments'] = []
+        i3['metrics'] = {'age_hours': 10.0, 'remaining_hours': 326.0, 'due_soon': False,
+                         'overdue': False, 'unreplied': True, 'no_internal_assignee': False, 'unassigned': False}
+        i4 = item(4)
+        i4['created_at'] = '2026-10-12T01:00:00Z'  # > 24h workday without human reply
+        i4['comments'] = []
+        i4['metrics'] = {'age_hours': 73.0, 'remaining_hours': 263.0, 'due_soon': False,
+                         'overdue': False, 'unreplied': True, 'no_internal_assignee': False, 'unassigned': False}
+
+        before = snapshot([i1, i2, i3, i4])
         after = copy.deepcopy(before)
         # Close i1, assign i2 & add comment and AI report
         after['repositories']['cann/ge']['issues'][0]['state'] = 'closed'
@@ -87,12 +98,12 @@ class ReportTests(unittest.TestCase):
         }]
 
         sla = compute_official_sla(after['repositories']['cann/ge']['issues'], after['generated_at'])
-        self.assertEqual(sla['total'], 2)
+        self.assertEqual(sla['total'], 4)
         self.assertEqual(sla['closed'], 1)
-        self.assertEqual(sla['closure_rate'], 50.0)
+        self.assertEqual(sla['closure_rate'], 25.0)
 
         text = render(before, after)
-        self.assertIn('[CANN] Issue 巡检 | 待处理 1 · 超期 0 · 新增 0 / 更新 2', text)
+        self.assertIn('[CANN] Issue 巡检 | 待处理 3 · 超期 0 · 新增 0 / 更新 2', text)
         self.assertIn('【一、全局概况与官方 SLA 核心指标】', text)
         self.assertIn('【二、分仓多维统计明细】', text)
         self.assertIn('本次新闭环 Issue：', text)
@@ -100,12 +111,18 @@ class ReportTests(unittest.TestCase):
         self.assertIn('本次新增评论 Issue：', text)
         self.assertIn('本次新增 AI 诊断报告 Issue：', text)
         self.assertIn('【四、重点风险待办清单】', text)
+        self.assertIn('3) 即将响应超时 ≤24h 工作日', text)
+        self.assertIn('4) 开启未响应超时 >24h 工作日', text)
+        self.assertLess(text.index('3) 即将响应超时 ≤24h 工作日'), text.index('4) 开启未响应超时 >24h 工作日'))
         self.assertIn('【五、内部维护人待办负载 Top 排行】', text)
         self.assertIn('dev_a：待处理 3', text)
 
         html_doc = render_html(before, after)
         self.assertIn('<!DOCTYPE html>', html_doc)
         self.assertIn('四仓公共 Issue 态势与 SLA 巡检汇总', html_doc)
+        self.assertIn('3. 即将响应超时 &le;24h 工作日', html_doc)
+        self.assertIn('4. 开启未响应超时 &gt;24h 工作日', html_doc)
+        self.assertLess(html_doc.index('3. 即将响应超时'), html_doc.index('4. 开启未响应超时'))
         self.assertIn('本次新闭环 Issue', html_doc)
         self.assertIn('内部维护人待办负载 Top 10', html_doc)
 

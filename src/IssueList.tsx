@@ -40,6 +40,7 @@ const filterValueLabels: Record<string, Record<string, string>> = {
   first_resp: {
     qualified: "首次响应达标 (≤24h)",
     unqualified: "首次响应未达标 (>24h)",
+    open_soon: "即将响应超时 (≤24h)",
     open_timeout: "开启未响应超时 (>24h)",
     self: "自处理 Issue",
   },
@@ -122,11 +123,13 @@ export function IssueList({
           ? sla!.firstRespQualified
           : value("first_resp") === "unqualified"
             ? sla!.firstRespUnqualified
-            : value("first_resp") === "open_timeout"
-              ? sla!.openNoRespTimeout
-              : value("first_resp") === "self"
-                ? sla!.isSelfProcessed
-                : true)) &&
+            : value("first_resp") === "open_soon"
+              ? sla!.openNoResp && !sla!.openNoRespTimeout
+              : value("first_resp") === "open_timeout"
+                ? sla!.openNoRespTimeout
+                : value("first_resp") === "self"
+                  ? sla!.isSelfProcessed
+                  : true)) &&
       (!value("risk") ||
         (value("risk") === "overdue"
           ? m.overdue
@@ -317,6 +320,7 @@ export function IssueList({
             ["", "全部"],
             ["qualified", "首次响应达标 (≤24h)"],
             ["unqualified", "首次响应未达标 (>24h)"],
+            ["open_soon", "即将响应超时 (≤24h)"],
             ["open_timeout", "开启未响应超时 (>24h)"],
             ["self", "自处理 Issue"],
           ])}

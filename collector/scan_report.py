@@ -441,6 +441,7 @@ def _analyze(previous, current, outcome='success'):
     ]
     due_soon_list.sort(key=lambda i: (i.get('metrics') or {}).get('remaining_hours', 9999))
 
+    open_soon_resp_list = []
     open_timeout_list = []
     for i in rows:
         if i.get('state') != 'open' or not i.get('metrics'):
@@ -448,6 +449,10 @@ def _analyze(previous, current, outcome='success'):
         sla_detail = evaluate_issue_sla(i, snapshot_iso)
         if sla_detail['open_no_resp_timeout']:
             open_timeout_list.append((i, sla_detail['stay_work_hours']))
+        elif sla_detail['open_no_resp']:
+            rem_h = max(0.0, 24.0 - sla_detail['stay_work_hours'])
+            open_soon_resp_list.append((i, sla_detail['stay_work_hours'], rem_h))
+    open_soon_resp_list.sort(key=lambda item_tuple: (item_tuple[2], item_tuple[0].get('id', '')))
     open_timeout_list.sort(key=lambda pair: (pair[0].get('created_at', ''), pair[0].get('id', '')), reverse=True)
 
     # 内部维护人负载排行
@@ -491,6 +496,7 @@ def _analyze(previous, current, outcome='success'):
         'reported_issues': reported_issues,
         'no_internal_list': no_internal_list,
         'due_soon_list': due_soon_list,
+        'open_soon_resp_list': open_soon_resp_list,
         'open_timeout_list': open_timeout_list,
         'internal_owners': internal_owners,
         'errors': current.get('errors') or [],
@@ -634,7 +640,7 @@ def render(previous, current, outcome='success'):
                 f'  报告：{report_url} | Issue：{item["url"]}',
             ]
 
-    if ctx['no_internal_list'] or ctx['due_soon_list'] or ctx['open_timeout_list']:
+    if ctx['no_internal_list'] or ctx['due_soon_list'] or ctx['open_soon_resp_list'] or ctx['open_timeout_list']:
         lines += ['', '【四、重点风险待办清单】']
         if ctx['no_internal_list']:
             lines.append(f'1) 未分配内部维护人（共 {len(ctx["no_internal_list"])} 项，展示前 {min(8, len(ctx["no_internal_list"]))} 项）：')
@@ -654,8 +660,16 @@ def render(previous, current, outcome='success'):
                 lines.append(
                     f'   - {item["id"]} {title}（距 14 天超期仅剩 {rem_hours}h | 责任人：{owner}） {item["url"]}'
                 )
+        if ctx['open_soon_resp_list']:
+            lines.append(f'3) 即将响应超时 ≤24h 工作日（共 {len(ctx["open_soon_resp_list"])} 项，展示最紧迫 {min(8, len(ctx["open_soon_resp_list"]))} 项）：')
+            for item, stay_h, rem_h in ctx['open_soon_resp_list'][:8]:
+                title = _clean_text(item.get('title'))
+                owner = _owner_login(item)
+                lines.append(
+                    f'   - {item["id"]} {title}（距 24h 首响超时仅剩 {rem_h:.1f}h 工作日，已停留 {stay_h:.1f}h | 责任人：{owner}） {item["url"]}'
+                )
         if ctx['open_timeout_list']:
-            lines.append(f'3) 开启未响应超时 >24h 工作日（共 {len(ctx["open_timeout_list"])} 项，展示最新 {min(8, len(ctx["open_timeout_list"]))} 项）：')
+            lines.append(f'4) 开启未响应超时 >24h 工作日（共 {len(ctx["open_timeout_list"])} 项，展示最新 {min(8, len(ctx["open_timeout_list"]))} 项）：')
             for item, stay_h in ctx['open_timeout_list'][:8]:
                 title = _clean_text(item.get('title'))
                 owner = _owner_login(item)
@@ -1011,6 +1025,34 @@ def render_html(previous, current, outcome='success'):
             f'{"".join(rows_html)}</table></div>'
         )
 
+    if ctx['open_soon_resp_list']:
+        rows_html = []
+        for item, stay_h, rem_h in ctx['open_soon_resp_list'][:8]:
+            title = html.escape(_clean_text(item.get('title')))
+            owner = html.escape(_owner_login(item))
+            url = html.escape(item.get('url', ''))
+            rows_html.append(
+                f'<tr>'
+                f'<td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">'
+                f'<a href="{url}" style="color:#2563eb;font-weight:600;text-decoration:none;">{html.escape(item["id"])}</a></td>'
+                f'<td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;color:#0f172a;">{title}</td>'
+                f'<td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;color:#d97706;font-weight:600;">剩余 {rem_h:.1f}h <span style="color:#64748b;font-weight:400;">（已停留 {stay_h:.1f}h）</span></td>'
+                f'<td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;color:#334155;">{owner}</td>'
+                f'</tr>'
+            )
+        risk_sections_html.append(
+            '<div style="margin-top:12px;border:1px solid #fde68a;border-radius:8px;overflow:hidden;">'
+            '<div style="padding:8px 12px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:13px;font-weight:700;color:#b45309;">'
+            f'3. 即将响应超时 &le;24h 工作日（共 {len(ctx["open_soon_resp_list"])} 项，展示最紧迫 {min(8, len(ctx["open_soon_resp_list"]))} 项）'
+            f'<a href="{DASHBOARD_URL}#/issues?state=open&amp;first_resp=open_soon" style="float:right;color:#b45309;text-decoration:none;font-weight:600;">查看全部 ↗</a>'
+            '</div>'
+            '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;">'
+            '<tr style="background:#fefce8;color:#713f12;text-align:left;">'
+            '<th style="padding:6px 10px;">Issue</th><th style="padding:6px 10px;">标题</th>'
+            '<th style="padding:6px 10px;">距 24h 首响超时</th><th style="padding:6px 10px;">责任人</th></tr>'
+            f'{"".join(rows_html)}</table></div>'
+        )
+
     if ctx['open_timeout_list']:
         rows_html = []
         for item, stay_h in ctx['open_timeout_list'][:8]:
@@ -1029,7 +1071,7 @@ def render_html(previous, current, outcome='success'):
         risk_sections_html.append(
             '<div style="margin-top:12px;border:1px solid #fecaca;border-radius:8px;overflow:hidden;">'
             '<div style="padding:8px 12px;background:#fef2f2;border-bottom:1px solid #fecaca;font-size:13px;font-weight:700;color:#991b1b;">'
-            f'3. 开启未响应超时 &gt;24h 工作日（共 {len(ctx["open_timeout_list"])} 项，展示最新 {min(8, len(ctx["open_timeout_list"]))} 项）'
+            f'4. 开启未响应超时 &gt;24h 工作日（共 {len(ctx["open_timeout_list"])} 项，展示最新 {min(8, len(ctx["open_timeout_list"]))} 项）'
             f'<a href="{DASHBOARD_URL}#/issues?state=open&amp;first_resp=open_timeout" style="float:right;color:#b91c1c;text-decoration:none;font-weight:600;">查看全部 ↗</a>'
             '</div>'
             '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;">'

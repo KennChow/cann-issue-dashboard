@@ -108,8 +108,12 @@ class PersistenceTests(unittest.TestCase):
             after=json.loads((root/'public/data/dashboard.json').read_text())
             self.assertEqual(after['repositories']['cann/ge']['issues'][0]['title'],oldi['title'])
             self.assertEqual(after['last_success'],NOW.isoformat());self.assertFalse(after['complete']);self.assertEqual(len(after['errors']),3)
-    def test_nonpublic_data_rejected(self):
-        with self.assertRaises(SyncError):normalize('cann/ge',raw(visibility_reason='private'))
+    def test_nonpublic_data_redacted(self):
+        norm=normalize('cann/ge',raw(visibility_reason='private',title='sensitive-vuln-title',body='sensitive-poc-body'))
+        self.assertTrue(norm.get('confidential'))
+        self.assertEqual(norm['title'],'[保密 Issue #1]')
+        self.assertEqual(norm['body'],'')
+        self.assertNotIn('sensitive',json.dumps(norm))
 
 class RateAndCacheTests(unittest.TestCase):
     def test_total_count_avoids_empty_request(self):
@@ -128,15 +132,21 @@ class RateAndCacheTests(unittest.TestCase):
         self.assertTrue(new['issues'][0]['comments_complete'])
 
 class ConfidentialTests(unittest.TestCase):
-    def test_confidential_records_excluded_without_blocking_public_repo(self):
+    def test_confidential_records_redacted_and_counted(self):
         class Fake:
             def pages(self,path,**params):
                 if path.endswith('/issues'):
-                    return [raw(comments=0,visibility_reason='public'),raw(number='2',id=2,visibility_reason='confidential')]
+                    return [raw(comments=0,visibility_reason='public'),raw(number='2',id=2,title='secret-vuln',body='secret-body',comments=1,visibility_reason='confidential')]
+                if path.endswith('/2/comments'):
+                    return [{'id':20,'body':'secret-comment-detail','user':{'login':'member'},'created_at':NOW.isoformat()}]
                 return []
         record=collect_repo(Fake(),'cann/ge',{},CONFIG,NOW,True)
-        self.assertEqual(len(record['issues']),1);self.assertEqual(record['excluded_nonpublic'],1)
-        self.assertEqual(record['issues'][0]['number'],'1')
+        self.assertEqual(len(record['issues']),2);self.assertEqual(record['confidential_count'],1)
+        conf_issue=next(i for i in record['issues'] if i['number']=='2')
+        self.assertEqual(conf_issue['title'],'[保密 Issue #2]')
+        self.assertEqual(conf_issue['body'],'')
+        self.assertEqual(conf_issue['comments'][0]['body'],'[保密评论]')
+        self.assertNotIn('secret-',json.dumps(record))
 
 class MembershipTests(unittest.TestCase):
     def test_gitcode_ecosystem_developer_is_project_member(self):

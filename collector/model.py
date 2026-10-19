@@ -21,8 +21,7 @@ def user(value):
     return {'login': value.get('login') or value.get('username') or '', 'avatar': avatar if avatar.startswith('https://') else ''}
 
 def normalize(repo, row):
-    if row.get('visibility_reason') not in (None, 'public'):
-        raise SyncError('Refusing non-public issue content')
+    confidential = row.get('visibility_reason') not in (None, 'public')
     if not row.get('number') or not row.get('title'):
         raise SyncError('Issue missing number/title')
     state = row.get('state')
@@ -38,21 +37,32 @@ def normalize(repo, row):
         raise SyncError('Invalid assignees')
     people = {u['login']: u for u in map(user, assignees) if u['login']}
     number = str(row['number'])
-    return dict(id=repo + '#' + number, repo=repo, number=number, title=row['title'],
-                body=row.get('body') or '', author=user(row.get('user') or row.get('author')),
-                assignees=list(people.values()), state='closed' if state in ('closed', 'rejected') else 'open',
-                created_at=row['created_at'], updated_at=row['updated_at'], closed_at=closed,
-                url=f'https://gitcode.com/{repo}/issues/{number}',
-                labels=[x.get('name', '') if isinstance(x, dict) else str(x) for x in row.get('labels') or []],
-                source_status=row.get('issue_state') or '', priority=(row.get('issue_priority_detail') or {}).get('title', ''),
-                comment_count=row.get('comments'), comments=[], comments_complete=False, reports=[])
+    title = f'[保密 Issue #{number}]' if confidential else row['title']
+    body = '' if confidential else (row.get('body') or '')
+    result = dict(id=repo + '#' + number, repo=repo, number=number, title=title,
+                  body=body, author=user(row.get('user') or row.get('author')),
+                  assignees=list(people.values()), state='closed' if state in ('closed', 'rejected') else 'open',
+                  created_at=row['created_at'], updated_at=row['updated_at'], closed_at=closed,
+                  url=f'https://gitcode.com/{repo}/issues/{number}',
+                  labels=[x.get('name', '') if isinstance(x, dict) else str(x) for x in row.get('labels') or []],
+                  source_status=row.get('issue_state') or '', priority=(row.get('issue_priority_detail') or {}).get('title', ''),
+                  comment_count=row.get('comments'), comments=[], comments_complete=False, reports=[])
+    if confidential:
+        result['confidential'] = True
+    return result
 
-def comments(rows):
+def comments(rows, confidential=False):
     result = []
     for row in rows:
         at = row.get('created_at')
         date(at)
-        result.append({'id': str(row['id']), 'body': row.get('body') or '', 'author': user(row.get('user')),
+        raw_body = row.get('body') or ''
+        if confidential:
+            stripped = raw_body.strip()
+            body = '' if not stripped else ('/command' if stripped.startswith('/') else '[保密评论]')
+        else:
+            body = raw_body
+        result.append({'id': str(row['id']), 'body': body, 'author': user(row.get('user')),
                        'created_at': at, 'system': bool(row.get('system', False))})
     return sorted(result, key=lambda c: (date(c['created_at']), c['id']))
 

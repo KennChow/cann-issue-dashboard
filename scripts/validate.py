@@ -22,6 +22,9 @@ assert sum(o['stats']['open'] for o in data['owners']) == data['stats']['open']
 for issue in issues:
     assert status(issue,date(data['generated_at']))==issue['metrics']
     assert issue['url'].startswith('https://gitcode.com/cann/')
+    if issue.get('confidential'):
+        assert issue['title']==f"[保密 Issue #{issue['number']}]" and issue['body']==''
+        assert all(c['body'] in ('','/command','[保密评论]') for c in issue['comments'])
     for report in issue['reports']:
         assert report['url'].startswith('https://gitcode.com/chenqian1365/issue-watch-results/blob/')
 print('Validated',len(issues),'issues; aggregate and metric consistency OK')

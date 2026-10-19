@@ -30,22 +30,15 @@ def collect_repo(client, repo, old, config, now, full=False, cache_dir=None, mem
     if not full and old.get('last_success'):
         params['since'] = (date(old['last_success']) - timedelta(hours=1)).isoformat()
     raw = client.pages(repo + '/issues', **params)
-    excluded = {repo + '#' + str(r.get('number')) for r in raw if r.get('visibility_reason') not in (None, 'public')}
-    raw = [r for r in raw if repo + '#' + str(r.get('number')) not in excluded]
     changed_ids = {repo + '#' + str(r.get('number')) for r in raw}
     if not full:
         for identity, previous_issue in old_rows.items():
-            if not previous_issue.get('comments_complete') and identity not in changed_ids and identity not in excluded:
+            if not previous_issue.get('comments_complete') and identity not in changed_ids:
                 detail = client.get(f"{repo}/issues/{previous_issue['number']}")
-                if detail.get('visibility_reason') in (None, 'public'):
-                    raw.append(detail)
-                else:
-                    excluded.add(identity)
+                raw.append(detail)
     for raw_issue in raw:
         normalize(repo, raw_issue)
     rows = {} if full else copy.deepcopy(old_rows)
-    for identity in excluded:
-        rows.pop(identity, None)
     warnings = []
     assignment_members = set()
     assignment_members_complete = False
@@ -65,28 +58,30 @@ def collect_repo(client, repo, old, config, now, full=False, cache_dir=None, mem
     if full and len(raw) > 20:
         try:
             all_comments = client.pages(repo + '/issues/comments', sort='created', direction='asc')
-            public_ids = {str(r['id']): str(r['number']) for r in raw}
-            grouped = {number: [] for number in public_ids.values()}
+            known_ids = {str(r['id']): str(r['number']) for r in raw}
+            grouped = {number: [] for number in known_ids.values()}
             for comment in all_comments:
                 target = (comment.get('target') or {}).get('issue') or {}
                 target_id = str(target.get('id'))
-                if target_id not in public_ids:
-                    continue  # Never retain comments belonging to excluded/non-public Issues.
+                if target_id not in known_ids:
+                    continue
                 number = str(target.get('number'))
-                if number != public_ids[target_id]:
+                if number != known_ids[target_id]:
                     raise SyncError('Bulk comment target identity mismatch')
                 grouped[number].append(comment)
             for raw_issue in raw:
                 number = str(raw_issue['number'])
                 expected = raw_issue.get('comments')
+                is_conf = raw_issue.get('visibility_reason') not in (None, 'public')
                 if expected is None or len(grouped[number]) == int(expected):
-                    bulk_results[repo + '#' + number] = comments(grouped[number])
-            print(repo, 'bulk comments', len(all_comments), 'validated for', len(bulk_results), 'public issues', flush=True)
+                    bulk_results[repo + '#' + number] = comments(grouped[number], confidential=is_conf)
+            print(repo, 'bulk comments', len(all_comments), 'validated for', len(bulk_results), 'issues', flush=True)
         except (SyncError, ValueError, TypeError, KeyError):
             print(repo, 'bulk comments unavailable; falling back to per-issue cache/API', flush=True)
     def fetch_comments(raw_issue):
         identity = repo + '#' + str(raw_issue.get('number'))
         before = old_rows.get(identity)
+        is_conf = raw_issue.get('visibility_reason') not in (None, 'public')
         if identity in bulk_results:
             return identity, (bulk_results[identity], None)
         if before and before['updated_at'] == raw_issue.get('updated_at') and before.get('comment_count') == raw_issue.get('comments') and before.get('comments_complete') and not full:
@@ -95,13 +90,13 @@ def collect_repo(client, repo, old, config, now, full=False, cache_dir=None, mem
             return identity, ([], None)
         cache_file = None
         if cache_dir:
-            cache_key = hashlib.sha256((identity + str(raw_issue.get('updated_at')) + str(raw_issue.get('comments'))).encode()).hexdigest()
+            cache_key = hashlib.sha256((identity + str(raw_issue.get('updated_at')) + str(raw_issue.get('comments')) + ('#conf' if is_conf else '')).encode()).hexdigest()
             cache_file = cache_dir / (cache_key + '.json')
             cached = read(cache_file, {})
             if cached.get('at') and now - date(cached['at']) < timedelta(hours=24):
                 return identity, (cached['comments'], None)
         try:
-            fetched = comments(client.pages(f"{repo}/issues/{raw_issue['number']}/comments"))
+            fetched = comments(client.pages(f"{repo}/issues/{raw_issue['number']}/comments"), confidential=is_conf)
             if cache_file:
                 atomic(cache_file, {'at': now.isoformat(), 'comments': fetched})
             return identity, (fetched, None)
@@ -139,8 +134,9 @@ def collect_repo(client, repo, old, config, now, full=False, cache_dir=None, mem
         issue['workload_owner'] = workload_owner(issue)['login']
         issue['internal_assignment'] = internal_assignment(issue, assignment_members, assignment_members_complete)
         issue['reply_status'], issue['first_reply_at'] = reply(issue, members, member_complete, config['bots'])
+    conf_count = sum(bool(i.get('confidential')) for i in rows.values())
     return {'issues': list(rows.values()), 'last_success': now.isoformat(), 'last_full': now.isoformat() if full else old['last_full'],
-            'excluded_nonpublic': len(excluded), 'warnings': warnings, 'error': None, 'mode': 'full' if full else 'incremental'}
+            'excluded_nonpublic': 0, 'confidential_count': conf_count, 'warnings': warnings, 'error': None, 'mode': 'full' if full else 'incremental'}
 
 def run(args, client=None):
     client = client or Client()

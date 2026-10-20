@@ -55,6 +55,70 @@ export type Stats = {
   has_report: number;
   closure_rate: number | null;
 };
+export type PrComment = {
+  id: string;
+  body: string;
+  author: Person;
+  created_at: string;
+  updated_at?: string;
+  comment_type?: string;
+  resolved?: boolean;
+  system: boolean;
+};
+export type PrMetrics = {
+  age_hours: number;
+  ready: boolean;
+  blocked: boolean;
+  unreplied: boolean;
+  has_linked_issue: boolean;
+};
+export type PullRequest = {
+  id: string;
+  repo: string;
+  number: string;
+  title: string;
+  body: string;
+  url: string;
+  author: Person;
+  assignees: Person[];
+  testers: Person[];
+  state: string;
+  draft: boolean;
+  mergeable: boolean;
+  ci_status: string;
+  ci_passed_at: string | null;
+  head_sha: string;
+  target_branch: string;
+  source_branch: string;
+  added_lines: number;
+  removed_lines: number;
+  reply_status: string;
+  first_reply_at: string | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  merged_at: string | null;
+  labels: string[];
+  comment_count?: number;
+  comments: PrComment[];
+  files: string[];
+  linked_issues: string[];
+  details_complete: boolean;
+  confidential?: boolean;
+  metrics: PrMetrics;
+};
+export type PrStats = {
+  total: number;
+  open: number;
+  merged: number;
+  closed: number;
+  closed_loop: number;
+  ready: number;
+  blocked: number;
+  unreplied: number;
+  has_linked_issue: number;
+  closure_rate: number | null;
+};
 export type Data = {
   internal_directory?: {
     checked_at: string;
@@ -79,12 +143,16 @@ export type Data = {
     {
       issues: Issue[];
       stats: Stats;
+      prs?: PullRequest[];
+      pr_stats?: PrStats;
       last_success?: string;
+      pr_last_success?: string;
       warnings: string[];
       error: string | null;
     }
   >;
   stats: Stats;
+  pr_stats?: PrStats;
   owners: {
     person: Person;
     role: string;

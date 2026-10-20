@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from collector.model import stats, status, date, owners
+from collector.model import stats, status, date, owners, pr_stats, pr_status
 for candidate in Path('public').rglob('*.json'):
     payload = json.loads(candidate.read_text())
     assert not (isinstance(payload, dict) and 'fields' in payload and 'repo_fallbacks' in payload), 'Private duty data must not be published'
@@ -27,4 +27,14 @@ for issue in issues:
         assert all(c['body'] in ('','/command','[保密评论]') for c in issue['comments'])
     for report in issue['reports']:
         assert report['url'].startswith('https://gitcode.com/chenqian1365/issue-watch-results/blob/')
-print('Validated',len(issues),'issues; aggregate and metric consistency OK')
+prs=[pr for r in data['repositories'].values() for pr in r.get('prs',[])]
+assert len({pr['id'] for pr in prs})==len(prs)
+if 'pr_stats' in data:
+    assert pr_stats(prs)==data['pr_stats']
+for pr in prs:
+    assert pr_status(pr,date(data['generated_at']))==pr['metrics']
+    assert pr['url'].startswith('https://gitcode.com/cann/')
+    if pr.get('confidential'):
+        assert pr['title']==f"[保密 PR #{pr['number']}]" and pr['body']==''
+        assert all(c['body'] in ('','/command','[保密评论]') for c in pr['comments'])
+print('Validated',len(issues),'issues and',len(prs),'external PRs; aggregate and metric consistency OK')

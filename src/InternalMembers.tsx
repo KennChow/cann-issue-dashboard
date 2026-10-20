@@ -1,8 +1,16 @@
 import { useState } from "react";
 import type { Data } from "./types";
+import type { DutyData } from "./duty";
 import { fmt, short, go } from "./shared";
+import { computePrPersonWorkloads } from "./pr";
 
-export function InternalMembers({ data }: { data: Data }) {
+export function InternalMembers({
+  data,
+  dutyData,
+}: {
+  data: Data;
+  dutyData?: DutyData;
+}) {
   const [query, setQuery] = useState("");
   const [onlyWithOpen, setOnlyWithOpen] = useState(false);
   const directory = data.internal_directory;
@@ -13,11 +21,26 @@ export function InternalMembers({ data }: { data: Data }) {
     data.owners.map((o) => [o.person.login.toLowerCase(), o]),
   );
 
+  const allIssues = Object.values(data.repositories).flatMap((r) => r.issues);
+  const allPrs = Object.values(data.repositories).flatMap((r) => r.prs || []);
+  const issueMap = new Map(allIssues.map((i) => [i.id, i]));
+  const prWorkloads = computePrPersonWorkloads(
+    allPrs,
+    dutyData,
+    issueMap,
+    data.generated_at,
+  );
+  const prWorkloadMap = new Map(
+    prWorkloads.map((w) => [w.name.toLowerCase(), w]),
+  );
+
   const people = directory.people.filter((p) => {
     const matchQuery =
       !query.trim() ||
       p.login.toLowerCase().includes(query.trim().toLowerCase()) ||
-      p.repos.some((r) => short(r).toLowerCase().includes(query.trim().toLowerCase()));
+      p.repos.some((r) =>
+        short(r).toLowerCase().includes(query.trim().toLowerCase()),
+      );
     const openCount = ownerMap.get(p.login.toLowerCase())?.stats.open || 0;
     return matchQuery && (!onlyWithOpen || openCount > 0);
   });
@@ -38,7 +61,13 @@ export function InternalMembers({ data }: { data: Data }) {
             className={`chip-btn ${onlyWithOpen ? "active" : ""}`}
             onClick={() => setOnlyWithOpen(!onlyWithOpen)}
           >
-            仅看名下有 Open ({data.owners.filter((o) => o.role === "internal" && o.stats.open > 0).length})
+            仅看名下有 Open (
+            {
+              data.owners.filter(
+                (o) => o.role === "internal" && o.stats.open > 0,
+              ).length
+            }
+            )
           </button>
           <div className="input-clear-wrap">
             <input
@@ -80,12 +109,14 @@ export function InternalMembers({ data }: { data: Data }) {
               <th>成员来源仓库</th>
               <th>人工补充依据</th>
               <th>名下 Open Issue</th>
+              <th>关联外部 PR (Open / 总)</th>
             </tr>
           </thead>
           <tbody>
             {people.map((p) => {
               const owner = ownerMap.get(p.login.toLowerCase());
               const openCount = owner?.stats.open || 0;
+              const prWork = prWorkloadMap.get(p.login.toLowerCase());
               return (
                 <tr key={p.login.toLowerCase()}>
                   <td>
@@ -136,6 +167,23 @@ export function InternalMembers({ data }: { data: Data }) {
                     >
                       {openCount}
                     </button>
+                  </td>
+                  <td>
+                    {prWork && prWork.totalPrs > 0 ? (
+                      <button
+                        className={`text ${prWork.openPrs > 0 ? "green strong-num" : "blue"}`}
+                        onClick={() =>
+                          go(
+                            { state: "all", issue_maintainer: p.login },
+                            "prs",
+                          )
+                        }
+                      >
+                        {prWork.openPrs} / {prWork.totalPrs}
+                      </button>
+                    ) : (
+                      <span className="zero">0</span>
+                    )}
                   </td>
                 </tr>
               );

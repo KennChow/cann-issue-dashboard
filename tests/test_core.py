@@ -230,5 +230,133 @@ class DirectoryTests(unittest.TestCase):
         d=collect_directory(Fake(),['cann/ge'],[],{'sources':{'cann/ge':{'members':[{'login':'old','avatar':''}],'last_success':NOW.isoformat()}}},NOW)
         self.assertEqual(d['people'][0]['stale_repos'],['cann/ge']);self.assertFalse(d['people'][0]['confirmed'])
 
+class PullRequestTests(unittest.TestCase):
+    def test_extract_linked_issues_and_normalize_pr(self):
+        from collector.model import extract_linked_issues, normalize_pr
+        refs = extract_linked_issues(
+            'cann/ge',
+            'Fix memory leak (#12)',
+            'Closes #12, resolves cann/metadef#34 and https://gitcode.com/cann/tensorflow/issues/56',
+            [{'number': 78, 'repo': 'cann/ge'}],
+        )
+        self.assertEqual(refs, ['cann/ge#12', 'cann/ge#78', 'cann/metadef#34', 'cann/tensorflow#56'])
+        raw_pr = {
+            'id': 10,
+            'number': 101,
+            'title': 'WIP: support new op',
+            'body': 'Fixes #12',
+            'state': 'open',
+            'draft': True,
+            'mergeable': False,
+            'created_at': (NOW - timedelta(hours=80)).isoformat(),
+            'updated_at': NOW.isoformat(),
+            'user': {'login': 'external-user'},
+            'labels': [{'name': 'ci-pipeline-failed'}, {'name': 'lgtm'}],
+            'head': {'ref': 'feat'},
+            'base': {'ref': 'master'},
+        }
+        pr = normalize_pr('cann/ge', raw_pr)
+        self.assertTrue(pr['draft'])
+        self.assertFalse(pr['mergeable'])
+        self.assertEqual(pr['ci_status'], 'failed')
+        self.assertIn('lgtm', pr['labels'])
+        conf_pr = normalize_pr('cann/ge', {**raw_pr, 'visibility_reason': 'private', 'title': 'secret-pr', 'body': 'secret-body'})
+        self.assertTrue(conf_pr.get('confidential'))
+        self.assertEqual(conf_pr['title'], '[保密 PR #101]')
+        self.assertEqual(conf_pr['body'], '')
+
+    def test_pr_reply_status_and_sla_metrics(self):
+        from collector.model import normalize_pr, pr_reply, pr_status, pr_stats
+        raw_pr = {
+            'id': 11,
+            'number': 102,
+            'title': 'Add external feature',
+            'body': '',
+            'state': 'open',
+            'draft': False,
+            'mergeable': True,
+            'created_at': (NOW - timedelta(hours=200)).isoformat(),
+            'updated_at': (NOW - timedelta(days=15)).isoformat(),
+            'user': {'login': 'ext-author'},
+            'labels': [{'name': 'ci-pipeline-passed'}],
+        }
+        pr = normalize_pr('cann/ge', raw_pr)
+        pr['details_complete'] = True
+        pr['comments'] = [
+            {'id': '1', 'author': {'login': 'bot'}, 'body': 'ci passed', 'created_at': (NOW - timedelta(hours=199)).isoformat(), 'system': False},
+            {'id': '2', 'author': {'login': 'member'}, 'body': '/lgtm', 'created_at': (NOW - timedelta(hours=198)).isoformat(), 'system': False},
+        ]
+        status_val, reply_at = pr_reply(pr, ['bot'])
+        self.assertEqual(status_val, 'unreplied')
+        self.assertIsNone(reply_at)
+        pr.update(reply_status=status_val, first_reply_at=reply_at)
+        m_unreplied = pr_status(pr, NOW)
+        self.assertTrue(m_unreplied['ready'])
+        self.assertFalse(m_unreplied['blocked'])
+        self.assertTrue(m_unreplied['unreplied'])
+        pr['comments'].append(
+            {'id': '3', 'author': {'login': 'member'}, 'body': 'Looks good, please add unit test', 'created_at': (NOW - timedelta(hours=140)).isoformat(), 'system': False}
+        )
+        status_val, reply_at = pr_reply(pr, ['bot'])
+        self.assertEqual(status_val, 'replied')
+        self.assertEqual(reply_at, (NOW - timedelta(hours=140)).isoformat())
+        pr.update(reply_status=status_val, first_reply_at=reply_at, linked_issues=['cann/ge#12'])
+        m = pr_status(pr, NOW)
+        self.assertTrue(m['ready'])
+        self.assertFalse(m['unreplied'])
+        self.assertTrue(m['has_linked_issue'])
+        pr['metrics'] = m
+        s = pr_stats([pr])
+        self.assertEqual(s['open'], 1)
+        self.assertEqual(s['ready'], 1)
+        self.assertEqual(s['has_linked_issue'], 1)
+
+    def test_collect_repo_prs_filters_internal_and_reuses_unchanged(self):
+        import tempfile
+        from pathlib import Path
+        from collector.sync import collect_repo_prs
+        with tempfile.TemporaryDirectory() as tmp:
+            class Fake:
+                def __init__(self):
+                    self.file_calls = 0
+                def pages(self, path, **params):
+                    if path.endswith('/pulls'):
+                        return [
+                            {
+                                'id': 1, 'number': 1, 'title': 'Internal PR', 'state': 'open',
+                                'created_at': NOW.isoformat(), 'updated_at': NOW.isoformat(),
+                                'user': {'login': 'Internal-Dev'},
+                            },
+                            {
+                                'id': 2, 'number': 2, 'title': 'External PR', 'state': 'open',
+                                'created_at': NOW.isoformat(), 'updated_at': NOW.isoformat(),
+                                'user': {'login': 'Community-User'}, 'notes': 1,
+                            },
+                        ]
+                    if path.endswith('/pulls/2/comments'):
+                        return [{'id': 20, 'body': 'Reviewed by committer', 'user': {'login': 'Internal-Dev'}, 'created_at': NOW.isoformat()}]
+                    return []
+                def get(self, path, **params):
+                    if path.endswith('/pulls/2/files'):
+                        self.file_calls += 1
+                        return [{'filename': 'runtime/v2/kernel.cc'}]
+                    if path.endswith('/pulls/2/issues'):
+                        return [{'number': 88}]
+                    return []
+            client = Fake()
+            res1 = collect_repo_prs(client, 'cann/ge', {}, CONFIG, NOW, full=True, cache_dir=Path(tmp), internal_logins={'internal-dev'})
+            self.assertEqual(len(res1['prs']), 1)
+            self.assertEqual(res1['prs'][0]['number'], '2')
+            self.assertEqual(res1['prs'][0]['files'], ['runtime/v2/kernel.cc'])
+            self.assertEqual(res1['prs'][0]['linked_issues'], ['cann/ge#88'])
+            self.assertEqual(res1['prs'][0]['reply_status'], 'replied')
+            self.assertEqual(client.file_calls, 1)
+            # Second incremental run with identical updated_at should reuse details without calling /files
+            res2 = collect_repo_prs(client, 'cann/ge', res1, CONFIG, NOW, full=False, cache_dir=Path(tmp), internal_logins={'internal-dev'})
+            self.assertEqual(client.file_calls, 1)
+            self.assertEqual(res2['prs'][0]['files'], ['runtime/v2/kernel.cc'])
+
 if __name__ == '__main__':
     unittest.main()
+
+

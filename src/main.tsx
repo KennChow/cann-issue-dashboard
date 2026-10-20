@@ -10,6 +10,10 @@ import "./style.css";
 import { InternalMembers } from "./InternalMembers";
 import { filterOwners } from "./owners";
 import { Duty } from "./DutyView";
+import { parseDuty, type DutyData } from "./duty";
+import { PRDashboard } from "./PRDashboard";
+import { PRList } from "./PRList";
+import { PRDetail } from "./PRDetail";
 import {
   TIME_PRESETS,
   resolveTimeRange,
@@ -100,10 +104,17 @@ const REPO_COLORS = ["#50a9ff", "#38cdb3", "#fbbf24", "#fb7185", "#a78bfa", "#f4
 
 function App() {
   const [data, setData] = useState<Data>();
+  const [dutyData, setDutyData] = useState<DutyData>();
   const [error, setError] = useState("");
   const [hash, setHash] = useState(location.hash);
   const [ownerSort, setOwnerSort] = useState("open");
   const [ownerSearch, setOwnerSearch] = useState("");
+  const view = hash.split("?")[0];
+  const needsDuty =
+    view.includes("pr-dashboard") ||
+    view.includes("/prs") ||
+    view.includes("members");
+
   useEffect(() => {
     const fn = () => setHash(location.hash);
     addEventListener("hashchange", fn);
@@ -119,6 +130,17 @@ function App() {
       .catch((e) => setError(e.message));
     return () => removeEventListener("hashchange", fn);
   }, []);
+
+  useEffect(() => {
+    if (!needsDuty || dutyData) return;
+    fetch("./data/duty.json", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => {
+        if (v) setDutyData(parseDuty(v));
+      })
+      .catch(() => {});
+  }, [needsDuty, dutyData]);
+
   if (error)
     return (
       <main>
@@ -139,6 +161,8 @@ function App() {
       </main>
     );
   const all = Object.values(data.repositories).flatMap((r) => r.issues);
+  const allPrs = Object.values(data.repositories).flatMap((r) => r.prs || []);
+  const issueMap = new Map(all.map((i) => [i.id, i]));
   const p = params();
   const ownerRole = p.get("owner_role") || "";
   const rangePreset = p.get("range") || "";
@@ -165,8 +189,8 @@ function App() {
       !ownerSearch.trim() ||
       o.person.login.toLowerCase().includes(ownerSearch.trim().toLowerCase()),
   );
-  const view = hash.split("?")[0];
   const selected = all.find((i) => i.id === p.get("id"));
+  const selectedPr = allPrs.find((pr) => pr.id === p.get("id"));
   const repo = p.get("repo") || "";
   const scope = repo
     ? dateFilteredAll.filter((i) => i.repo === repo)
@@ -231,6 +255,8 @@ function App() {
     ).length,
   }));
   const maxOwnerOpen = Math.max(...visibleOwners.map((o) => o.stats.open), 1);
+  const isPrDash = view.includes("pr-dashboard");
+  const isPrList = !isPrDash && view.includes("/prs");
   return (
     <>
       <header>
@@ -244,6 +270,8 @@ function App() {
           <a
             className={
               !view.includes("issues") &&
+              !isPrDash &&
+              !isPrList &&
               !view.includes("members") &&
               !view.includes("duty")
                 ? "active"
@@ -258,6 +286,18 @@ function App() {
             href="#/issues"
           >
             Issue 工作台
+          </a>
+          <a
+            className={isPrDash ? "active" : ""}
+            href="#/pr-dashboard"
+          >
+            PR 监控总览
+          </a>
+          <a
+            className={isPrList ? "active" : ""}
+            href="#/prs"
+          >
+            PR 工作台
           </a>
           <a
             href="#/members"
@@ -282,32 +322,51 @@ function App() {
                 ? "GE 责任田查询"
                 : view.includes("members")
                   ? "内部维护人总表"
-                  : view.includes("issues")
-                    ? "Issue 工作台"
-                    : "让每一个问题得到回应"}
+                  : isPrDash
+                    ? "外部 PR 监控总览"
+                    : isPrList
+                      ? "外部 PR 工作台"
+                      : view.includes("issues")
+                        ? "Issue 工作台"
+                        : "让每一个问题得到回应"}
             </h1>
             <p className="muted">
-              四仓公共 Issue · 责任归属 · 响应追踪 · 14 天闭环预警
+              {isPrDash || isPrList
+                ? "四仓外部贡献者 PR · 田主与 Committer 归属 · 关联 Issue 内部维护人 · 24h 首次响应监控"
+                : "四仓公共 Issue · 责任归属 · 响应追踪 · 14 天闭环预警"}
             </p>
           </div>
           <div className="heading-actions">
-            {!view.includes("issues") && !view.includes("duty") && (
+            {!view.includes("issues") && !isPrList && !view.includes("duty") && (
               <button
                 className="btn-export"
                 data-no-export
                 onClick={() =>
                   exportView(
-                    view.includes("members") ? "内部维护人总表" : "大屏总览",
+                    view.includes("members")
+                      ? "内部维护人总表"
+                      : isPrDash
+                        ? "外部PR监控总览"
+                        : "大屏总览",
                     "main",
                     data.generated_at,
                   )
                 }
               >
                 <ExportIcon />
-                {view.includes("members") ? "导出总表 HTML" : "导出大屏 HTML"}
+                {view.includes("members")
+                  ? "导出总表 HTML"
+                  : isPrDash
+                    ? "导出 PR 总览 HTML"
+                    : "导出大屏 HTML"}
               </button>
             )}
-            <button className="sync" onClick={() => go({ state: "all" })}>
+            <button
+              className="sync"
+              onClick={() =>
+                go({ state: "all" }, isPrDash || isPrList ? "prs" : "issues")
+              }
+            >
               最近成功同步
               <br />
               <strong>{fmt(data.last_success)}</strong>
@@ -341,7 +400,23 @@ function App() {
         {view.includes("duty") ? (
           <Duty />
         ) : view.includes("members") ? (
-          <InternalMembers data={data} />
+          <InternalMembers data={data} dutyData={dutyData} />
+        ) : isPrDash ? (
+          <PRDashboard
+            data={data}
+            prs={allPrs}
+            dutyData={dutyData}
+            issueMap={issueMap}
+            hash={hash}
+          />
+        ) : isPrList ? (
+          <PRList
+            prs={allPrs}
+            dutyData={dutyData}
+            issueMap={issueMap}
+            hash={hash}
+            at={data.generated_at}
+          />
         ) : view.includes("issues") ? (
           <IssueList issues={all} hash={hash} at={data.generated_at} />
         ) : (
@@ -1117,6 +1192,23 @@ function App() {
           close={() => {
             p.delete("id");
             go(Object.fromEntries(p));
+          }}
+        />
+      )}
+      {selectedPr && (
+        <PRDetail
+          pr={selectedPr}
+          prs={allPrs}
+          dutyData={dutyData}
+          issueMap={issueMap}
+          at={data.generated_at}
+          onSelect={(id) => {
+            p.set("id", id);
+            go(Object.fromEntries(p), "prs");
+          }}
+          close={() => {
+            p.delete("id");
+            go(Object.fromEntries(p), "prs");
           }}
         />
       )}

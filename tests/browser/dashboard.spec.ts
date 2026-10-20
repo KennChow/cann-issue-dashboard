@@ -237,3 +237,85 @@ test("official SLA metrics, time range filter, nav order, and submitter filter",
   const search = page.getByLabel("搜索标题关键词 / 编号 / 提出人 / 责任人");
   await expect(search).toHaveAttribute("placeholder", /提出人\/责任人|提出人 \/ 责任人/);
 });
+test("external PR dashboard, personal attribution by owner/committer/issue-maintainer, workbench drilldown and export", async ({
+  page,
+}, testInfo) => {
+  const fs = await import("node:fs/promises");
+  const dutyFixture = {
+    fields: [
+      {
+        module: "GE",
+        sub_field: "执行",
+        paths: [{ repo: "ge", prefix: "runtime", whole_repo: false }],
+        owner: { name: "测试田主甲" },
+        committer: { name: "测试提交人甲" },
+      },
+      {
+        module: "GE",
+        sub_field: "公共数据结构",
+        paths: [{ repo: "graph_metadef", prefix: "", whole_repo: true }],
+        owner: { name: "测试田主乙" },
+        committer: { name: "测试提交人乙" },
+      },
+    ],
+    repo_fallbacks: {
+      ge: {
+        sub_field: "其他",
+        owner: { name: "测试兜底田主" },
+        committer: { name: "测试兜底提交人" },
+      },
+    },
+    files: ["runtime/v2/kernel.cc"],
+  };
+  await page.route("**/data/duty.json", (route) =>
+    route.fulfill({ json: dutyFixture }),
+  );
+  await page.goto("/#/pr-dashboard");
+  await expect(
+    page.getByRole("heading", { name: "外部 PR 全局数据概览" }),
+  ).toBeVisible();
+  await expect(page.getByText(/digital\.hicann\.cn/)).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "各仓外部 PR 总览" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: /个人名下外部 PR 统计（田主 \/ Committer \/ 关联 Issue 维护人）/,
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".owner").first()).toBeVisible();
+  await page.getByLabel("PR 个人角色类型").selectOption("owner");
+  await expect(page).toHaveURL(/pr_role=owner/);
+  await expect(page.locator(".owner").first()).toContainText("田主");
+  await page.getByLabel("PR 个人角色类型").selectOption("committer");
+  await expect(page).toHaveURL(/pr_role=committer/);
+  await expect(page.locator(".owner").first()).toContainText("Committer");
+  await page.getByLabel("PR 个人角色类型").selectOption("");
+
+  await page.goto("/#/prs?state=all");
+  await expect(
+    page.getByRole("heading", { name: /外部 PR 列表/ }),
+  ).toBeVisible();
+  await expect(page.locator("table.prs-table tbody tr").first()).toBeVisible();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: /导出筛选结果 HTML/ }).click();
+  const download = await downloadPromise;
+  const exportPath = testInfo.outputPath("prs.html");
+  await download.saveAs(exportPath);
+  const html = await fs.readFile(exportPath, "utf8");
+  expect(html).toContain("外部 PR 筛选结果");
+  expect(html).not.toContain("<script");
+
+  await page.locator("table.prs-table tbody .title").first().click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(
+    page.getByRole("dialog").getByText("责任田归属（田主 / Committer）"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("dialog").getByText("关联 Issue & 内部维护人"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+

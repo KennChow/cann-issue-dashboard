@@ -41,6 +41,7 @@ jobs:
           path: |
             .cache/reports.json
             .cache/comments
+            .cache/prs
           key: report-trees-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: report-trees-
       - name: Save pre-scan baseline

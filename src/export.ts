@@ -1,4 +1,5 @@
-import type { Issue } from "./types";
+import type { Issue, PullRequest } from "./types";
+import type { PrAttribution, PrSlaDetail } from "./pr";
 const escape = (v: unknown) =>
   String(v ?? "").replace(
     /[&<>"']/g,
@@ -72,6 +73,40 @@ export function exportIssues(issues: Issue[], at: string, filters: string) {
   save(
     "Issue筛选结果",
     `<main><h1>Issue 筛选结果 · ${issues.length} 项</h1><p>筛选参数：${escape(filters || "默认 Open")}；包含全部分页结果，排序与页面一致。</p><section class="panel"><table class="issues"><thead><tr><th>仓库 / 编号 / 标题</th><th>创建者 / 责任人</th><th>状态</th><th>创建 / 更新</th><th>时长 / 期限</th><th>标签 / AI 报告</th></tr></thead><tbody>${rows}</tbody></table></section></main>`,
+    at,
+  );
+}
+export function exportPrs(
+  items: { pr: PullRequest; sla: PrSlaDetail; attr: PrAttribution }[],
+  at: string,
+  filters: string,
+) {
+  const link = (url: string, label: string) =>
+    `<a href="${escape(url)}" target="_blank" rel="noreferrer">${escape(label)} ↗</a>`;
+  const rows = items
+    .map(({ pr, sla, attr }) => {
+      const dutyStr = attr.fields.length
+        ? attr.fields
+            .map(
+              (f) =>
+                `田主: ${escape(f.owner)} / Committer: ${escape(f.committer)} (${escape(f.module)}·${escape(f.sub_field)})`,
+            )
+            .join("<br>")
+        : "—";
+      const issueStr = attr.linkedIssues.length
+        ? attr.linkedIssues
+            .map(
+              (li) =>
+                `${link(li.url, `${li.repo}#${li.number}`)} 维护人: ${escape(li.internalMaintainers.join(", ") || "未分配")}`,
+            )
+            .join("<br>")
+        : "无关联 Issue";
+      return `<tr><td>${escape(pr.repo)} !${escape(pr.number)}<br>${link(pr.url, pr.title)}</td><td>${escape(pr.author.login)}</td><td>${dutyStr}</td><td>${issueStr}</td><td>${escape(pr.state)} / CI: ${escape(pr.ci_status)} / ${pr.draft ? "草稿" : "就绪"} / ${pr.mergeable ? "无冲突" : "有冲突"}</td><td>停留 ${sla.stayWorkDays}d<br>首响 ${sla.firstRespWorkHours !== null ? sla.firstRespWorkHours.toFixed(1) + "h" : "未响应"}<br>创建：${escape(time(pr.created_at))}</td></tr>`;
+    })
+    .join("");
+  save(
+    "外部PR筛选结果",
+    `<main><h1>外部 PR 筛选结果 · ${items.length} 项</h1><p>筛选参数：${escape(filters || "默认 Open")}；包含全部分页结果，排序与页面一致。</p><section class="panel"><table class="issues"><thead><tr><th>仓库 / 序号 / 标题</th><th>作者</th><th>田主 / Committer</th><th>关联 Issue & 维护人</th><th>状态 / 门禁</th><th>停留 / 首响 / 时间</th></tr></thead><tbody>${rows}</tbody></table></section></main>`,
     at,
   );
 }

@@ -8,7 +8,11 @@ import os
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from .api import Client, SyncError
-from .model import normalize, comments, reply, status, stats, owners, date, user, internal_assignment, workload_owner
+from .model import (
+    normalize, comments, reply, status, stats, owners, date, user,
+    internal_assignment, workload_owner, DEFAULT_BOTS,
+    extract_linked_issues, normalize_pr, pr_comments, pr_reply, pr_status, pr_stats,
+)
 from .reports import index_reports
 from .history import history, activity
 from .membership import collect_directory, apply_directory
@@ -138,6 +142,161 @@ def collect_repo(client, repo, old, config, now, full=False, cache_dir=None, mem
     return {'issues': list(rows.values()), 'last_success': now.isoformat(), 'last_full': now.isoformat() if full else old['last_full'],
             'excluded_nonpublic': 0, 'confidential_count': conf_count, 'warnings': warnings, 'error': None, 'mode': 'full' if full else 'incremental'}
 
+def collect_repo_prs(client, repo, old, config, now, full=False, cache_dir=None, internal_logins=None, known_issue_ids=None):
+    old_rows = {p['id']: p for p in old.get('prs', [])}
+    full = full or not old.get('pr_last_full') or now - date(old['pr_last_full']) >= timedelta(days=config['full_interval_days'])
+    bot_names = DEFAULT_BOTS | {b.casefold() for b in config.get('bots', [])}
+    internal_set = {x.casefold() for x in (internal_logins or set())} | bot_names
+    if not full and old.get('pr_last_success'):
+        since = date(old['pr_last_success']) - timedelta(hours=1)
+        raw, seen = [], set()
+        for page in range(1, 10001):
+            rows_page = client.get(repo + '/pulls', state='all', sort='updated', direction='desc', page=page, per_page=100)
+            if not isinstance(rows_page, list):
+                raise SyncError('Expected paginated PR array')
+            if not rows_page:
+                break
+            stop = False
+            for r in rows_page:
+                if not isinstance(r, dict) or r.get('id') is None:
+                    raise SyncError('Missing PR record identity')
+                rid = str(r['id'])
+                if rid in seen:
+                    raise SyncError('Repeated PR record: unstable pagination')
+                seen.add(rid)
+                if date(r.get('updated_at')) < since:
+                    stop = True
+                else:
+                    raw.append(r)
+            if stop:
+                break
+    else:
+        raw = client.pages(repo + '/pulls', state='all', sort='updated', direction='desc')
+    changed_ids = {repo + '!' + str(r.get('number')) for r in raw}
+    if not full:
+        for identity, previous_pr in old_rows.items():
+            author_cf = (previous_pr.get('author') or {}).get('login', '').casefold()
+            if author_cf and author_cf not in internal_set and not previous_pr.get('details_complete') and identity not in changed_ids:
+                detail = client.get(f"{repo}/pulls/{previous_pr['number']}")
+                raw.append(detail)
+    ext_raw = []
+    for raw_pr in raw:
+        author_login = user(raw_pr.get('user') or raw_pr.get('author'))['login']
+        if not author_login or author_login.casefold() in internal_set:
+            continue
+        normalize_pr(repo, raw_pr)
+        ext_raw.append(raw_pr)
+    rows = {} if full else {
+        pid: copy.deepcopy(p)
+        for pid, p in old_rows.items()
+        if (p.get('author') or {}).get('login', '').casefold() not in internal_set
+    }
+    warnings = []
+    def fetch_details(raw_pr):
+        identity = repo + '!' + str(raw_pr.get('number'))
+        before = old_rows.get(identity)
+        is_conf = raw_pr.get('visibility_reason') not in (None, 'public')
+        head_sha = ((raw_pr.get('head') or {}).get('sha')
+                    or (raw_pr.get('diff_refs') or {}).get('head_sha')
+                    or raw_pr.get('head_sha') or '')
+        comment_count = raw_pr.get('notes') if raw_pr.get('notes') is not None else raw_pr.get('comments')
+        if (before and before.get('details_complete')
+                and before.get('updated_at') == raw_pr.get('updated_at')
+                and before.get('comment_count') == comment_count
+                and before.get('head_sha', '') == head_sha):
+            linked = extract_linked_issues(
+                repo,
+                '' if is_conf else raw_pr.get('title', ''),
+                '' if is_conf else raw_pr.get('body', ''),
+                before.get('linked_issues', []),
+                known_issue_ids,
+            )
+            return identity, (before.get('files', []), before.get('comments', []), linked, None)
+        cache_file = None
+        if cache_dir:
+            cache_key = hashlib.sha256(
+                (identity + str(raw_pr.get('updated_at')) + str(comment_count) + str(head_sha) + ('#conf' if is_conf else '')).encode()
+            ).hexdigest()
+            cache_file = cache_dir / (cache_key + '.json')
+            cached = read(cache_file, {})
+            if cached.get('at') and now - date(cached['at']) < timedelta(hours=24):
+                linked = extract_linked_issues(
+                    repo,
+                    '' if is_conf else raw_pr.get('title', ''),
+                    '' if is_conf else raw_pr.get('body', ''),
+                    cached.get('linked_issues', []),
+                    known_issue_ids,
+                )
+                return identity, (cached.get('files', []), cached.get('comments', []), linked, None)
+        try:
+            if is_conf:
+                files = []
+                api_issues = []
+            else:
+                raw_files = client.get(f"{repo}/pulls/{raw_pr['number']}/files")
+                files = [f.get('filename') for f in (raw_files if isinstance(raw_files, list) else []) if isinstance(f, dict) and f.get('filename')]
+                raw_issues = client.get(f"{repo}/pulls/{raw_pr['number']}/issues")
+                api_issues = raw_issues if isinstance(raw_issues, list) else []
+            if comment_count == 0:
+                fetched_comments = []
+            else:
+                fetched_comments = pr_comments(
+                    client.pages(f"{repo}/pulls/{raw_pr['number']}/comments"),
+                    confidential=is_conf,
+                    bots=config.get('bots', []),
+                )
+            linked = extract_linked_issues(
+                repo,
+                '' if is_conf else raw_pr.get('title', ''),
+                '' if is_conf else raw_pr.get('body', ''),
+                api_issues,
+                known_issue_ids,
+            )
+            if cache_file:
+                atomic(cache_file, {'at': now.isoformat(), 'files': files, 'comments': fetched_comments, 'linked_issues': linked})
+            return identity, (files, fetched_comments, linked, None)
+        except SyncError as exc:
+            fallback_files = before.get('files', []) if before else []
+            fallback_comments = before.get('comments', []) if before else []
+            fallback_issues = before.get('linked_issues', []) if before else []
+            return identity, (fallback_files, fallback_comments, fallback_issues, str(exc))
+    print(repo, 'fetching PR details for', len(ext_raw), 'external PRs', flush=True)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        detail_results = {}
+        for completed, (identity, result) in enumerate(pool.map(fetch_details, ext_raw), 1):
+            detail_results[identity] = result
+            if completed % 50 == 0:
+                print(repo, 'PR details', completed, '/', len(ext_raw), flush=True)
+    for raw_pr in ext_raw:
+        pr = normalize_pr(repo, raw_pr)
+        files, fetched_comments, linked, detail_error = detail_results[pr['id']]
+        pr['files'] = files
+        pr['comments'] = fetched_comments
+        pr['linked_issues'] = linked
+        pr['details_complete'] = detail_error is None
+        if detail_error:
+            warnings.append('PR !' + pr['number'] + ': ' + detail_error)
+        rows[pr['id']] = pr
+    for pr in rows.values():
+        pr['linked_issues'] = extract_linked_issues(
+            repo,
+            '' if pr.get('confidential') else pr.get('title', ''),
+            '' if pr.get('confidential') else pr.get('body', ''),
+            pr.get('linked_issues', []),
+            known_issue_ids,
+        )
+        pr['reply_status'], pr['first_reply_at'] = pr_reply(pr, config.get('bots', []))
+        pr['metrics'] = pr_status(pr, now)
+    conf_count = sum(bool(p.get('confidential')) for p in rows.values())
+    return {
+        'prs': list(rows.values()),
+        'pr_last_success': now.isoformat(),
+        'pr_last_full': now.isoformat() if full else old.get('pr_last_full', now.isoformat()),
+        'pr_confidential_count': conf_count,
+        'pr_warnings': warnings,
+        'pr_mode': 'full' if full else 'incremental',
+    }
+
 def run(args, client=None):
     client = client or Client()
     config = read(ROOT / 'config/repos.json', {})
@@ -156,12 +315,43 @@ def run(args, client=None):
         old = repositories.get(repo, {})
         try:
             repositories[repo] = collect_repo(client, repo, old, config, now, args.full, ROOT / ".cache/comments", directory["sources"][repo])
+            for k in ('prs', 'pr_stats', 'pr_last_success', 'pr_last_full', 'pr_confidential_count'):
+                if k in old:
+                    repositories[repo][k] = old[k]
             print(repo, repositories[repo]['mode'], len(repositories[repo]['issues']), 'issues', flush=True)
         except (SyncError, ValueError, TypeError, KeyError) as exc:
             message = str(exc) if isinstance(exc, SyncError) else 'Malformed upstream data'
-            repositories[repo] = {**old, 'issues': old.get('issues', []), 'error': message}
+            repositories[repo] = {**old, 'issues': old.get('issues', []), 'prs': old.get('prs', []), 'error': message}
             errors.append(repo + ': ' + message)
             print(errors[-1], flush=True)
+    known_issue_ids = {i['id'] for r in repositories.values() for i in r.get('issues', [])}
+    internal_logins = (
+        {p['login'].casefold() for p in directory.get('people', []) if p.get('confirmed', True)}
+        | {m.casefold() for ms in config.get('maintainers', {}).values() for m in ms}
+        | {b.casefold() for b in config.get('bots', [])}
+        | DEFAULT_BOTS
+    )
+    for repo in config['repos']:
+        if args.repo and args.repo != repo:
+            continue
+        if repositories.get(repo, {}).get('error'):
+            continue
+        old = previous.get('repositories', {}).get(repo, {})
+        try:
+            pr_res = collect_repo_prs(
+                client, repo, old, config, now, args.full,
+                ROOT / ".cache/prs", internal_logins, known_issue_ids,
+            )
+            repositories[repo]['prs'] = pr_res['prs']
+            repositories[repo]['pr_last_success'] = pr_res['pr_last_success']
+            repositories[repo]['pr_last_full'] = pr_res['pr_last_full']
+            repositories[repo]['pr_confidential_count'] = pr_res['pr_confidential_count']
+            repositories[repo].setdefault('warnings', []).extend(pr_res['pr_warnings'])
+            print(repo, pr_res['pr_mode'], len(pr_res['prs']), 'external PRs', flush=True)
+        except (SyncError, ValueError, TypeError, KeyError) as exc:
+            message = str(exc) if isinstance(exc, SyncError) else 'Malformed upstream PR data'
+            repositories[repo]['prs'] = old.get('prs', [])
+            repositories[repo].setdefault('warnings', []).append('外部 PR: ' + message)
     cache_path = ROOT / '.cache/reports.json'
     cache = read(cache_path, {})
     report_index = previous.get('report_index', {})
@@ -176,6 +366,7 @@ def run(args, client=None):
         errors.append('AI 报告: ' + (str(exc) if isinstance(exc, SyncError) else 'Malformed report metadata'))
     now = datetime.now(timezone.utc)
     issues = []
+    all_prs = []
     for repo, record in repositories.items():
         for issue in record['issues']:
             apply_directory(issue, directory)
@@ -183,20 +374,34 @@ def run(args, client=None):
             issue['metrics'] = status(issue, now)
         record['stats'] = stats(record['issues'])
         issues.extend(record['issues'])
+        record.setdefault('prs', [])
+        for pr in record['prs']:
+            pr['linked_issues'] = extract_linked_issues(
+                repo,
+                '' if pr.get('confidential') else pr.get('title', ''),
+                '' if pr.get('confidential') else pr.get('body', ''),
+                pr.get('linked_issues', []),
+                known_issue_ids,
+            )
+            pr['reply_status'], pr['first_reply_at'] = pr_reply(pr, config.get('bots', []))
+            pr['metrics'] = pr_status(pr, now)
+        record['pr_stats'] = pr_stats(record['prs'])
+        all_prs.extend(record['prs'])
     complete = all(repositories.get(r, {}).get('last_success') and not repositories[r].get('error') for r in config['repos'])
     result = {'schema_version': 1, 'generated_at': now.isoformat(),
               'last_success': min(repositories[r]['last_success'] for r in config['repos']) if complete else previous.get('last_success'),
               'complete': complete, 'errors': errors, 'repositories': repositories, 'internal_directory': directory,
-              'stats': stats(issues), 'owners': owners(issues), 'report_index': report_index, 'report_success': report_success,
+              'stats': stats(issues), 'pr_stats': pr_stats(all_prs), 'owners': owners(issues), 'report_index': report_index, 'report_success': report_success,
               'snapshots': history(previous.get('snapshots', []), issues, now, config['snapshot_days'], complete and not args.repo),
               'activity': activity(issues), 'requests': client.requests}
     json.dumps(result, allow_nan=False)
     atomic(dest, result)
     atomic(ROOT / '.cache/last-run.json', {'at': now.isoformat(), 'errors': errors, 'requests': client.requests})
-    for cached_file in (ROOT / '.cache/comments').glob('*.json'):
-        if datetime.fromtimestamp(cached_file.stat().st_mtime, timezone.utc) < now - timedelta(days=8):
-            cached_file.unlink()
-    print('Total', len(issues), 'reports', sum(bool(i['reports']) for i in issues), 'requests', client.requests, flush=True)
+    for cache_subdir in (ROOT / '.cache/comments', ROOT / '.cache/prs'):
+        for cached_file in cache_subdir.glob('*.json'):
+            if datetime.fromtimestamp(cached_file.stat().st_mtime, timezone.utc) < now - timedelta(days=8):
+                cached_file.unlink()
+    print('Total', len(issues), 'issues', len(all_prs), 'external PRs', 'reports', sum(bool(i['reports']) for i in issues), 'requests', client.requests, flush=True)
     return 1 if errors else 0
 
 def main():
@@ -206,3 +411,4 @@ def main():
     raise SystemExit(run(parser.parse_args()))
 if __name__ == '__main__':
     main()
+

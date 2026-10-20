@@ -17,6 +17,7 @@ import {
 const filterLabels: Record<string, string> = {
   q: "关键词",
   repo: "归属仓",
+  author_role: "作者类型",
   author: "作者",
   person: "责任人(全角色)",
   pr_owner: "田主",
@@ -35,6 +36,10 @@ const filterLabels: Record<string, string> = {
 };
 
 const filterValueLabels: Record<string, Record<string, string>> = {
+  author_role: {
+    external: "外部贡献者 PR",
+    internal: "内部开发者 PR",
+  },
   state: {
     open: "开启 (Open)",
     merged: "已合入 (Merged)",
@@ -190,6 +195,11 @@ export function PRList({
           : pr.state === st;
     if (!stateMatch) return false;
     if (value("repo") && pr.repo !== value("repo")) return false;
+    if (
+      value("author_role") &&
+      (pr.author_role || "external") !== value("author_role")
+    )
+      return false;
     if (
       authorQuery &&
       !(authorExact
@@ -407,6 +417,11 @@ export function PRList({
             ...Array.from(new Set(prs.map((pr) => pr.repo))).map(
               (r) => [r, short(r)] as [string, string],
             ),
+          ])}
+          {select("author_role", "作者类型", [
+            ["", "全部 PR"],
+            ["external", "外部贡献者 PR"],
+            ["internal", "内部开发者 PR"],
           ])}
           {select("state", "状态", [
             ["open", "开启 (Open)"],

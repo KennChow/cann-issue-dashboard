@@ -185,8 +185,9 @@ export function PRDashboard({
           <div>
             <h2>外部 PR 全局数据概览</h2>
             <p className="muted">
-              统计范围：提出者非四仓内部维护人（外部贡献者）的 Pull
-              Request；时长按中国大陆法定节假日及周末校准工作日计算。
+              统计范围：全局总览、各仓总览与趋势统计全量 Pull
+              Request（含内部与外部，与官方看板一致）；下方「个人名下外部 PR
+              统计」仅统计外部贡献者 PR（内部 PR 无需值班人跟踪）。时长按中国大陆法定节假日及周末校准工作日计算。
             </p>
           </div>
           <div className="dashboard-filters" data-no-export>
@@ -266,9 +267,11 @@ export function PRDashboard({
           </div>
         </div>
         <p className="muted overview-period">
-          当前统计周期：<strong>{activeRange.label}</strong>（共 {sla.total} 条外部
-          PR · 开启 {sla.open} · 已合入 {sla.merged} · 已关闭 {sla.closed}） ·
-          已关联 Issue：{sla.withLinkedIssueNum} 条 · 快照计算于{" "}
+          当前统计周期：<strong>{activeRange.label}</strong>（共 {sla.total} 条
+          PR，其中外部 PR{" "}
+          {scope.filter((pr) => pr.author_role !== "internal").length} 条 · 开启{" "}
+          {sla.open} · 已合入 {sla.merged} · 已关闭 {sla.closed}） ·
+          外部 PR 已关联 Issue：{sla.withLinkedIssueNum} 条 · 快照计算于{" "}
           {fmt(data.generated_at)}。
         </p>
 

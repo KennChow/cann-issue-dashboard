@@ -345,16 +345,21 @@ class PullRequestTests(unittest.TestCase):
                     return []
             client = Fake()
             res1 = collect_repo_prs(client, 'cann/ge', {}, CONFIG, NOW, full=True, cache_dir=Path(tmp), internal_logins={'internal-dev'})
-            self.assertEqual(len(res1['prs']), 1)
-            self.assertEqual(res1['prs'][0]['number'], '2')
-            self.assertEqual(res1['prs'][0]['files'], ['runtime/v2/kernel.cc'])
-            self.assertEqual(res1['prs'][0]['linked_issues'], ['cann/ge#88'])
-            self.assertEqual(res1['prs'][0]['reply_status'], 'replied')
+            self.assertEqual(len(res1['prs']), 2)
+            intr_pr = next(p for p in res1['prs'] if p['number'] == '1')
+            ext_pr = next(p for p in res1['prs'] if p['number'] == '2')
+            self.assertEqual(intr_pr['author_role'], 'internal')
+            self.assertEqual(intr_pr['files'], [])
+            self.assertEqual(ext_pr['author_role'], 'external')
+            self.assertEqual(ext_pr['files'], ['runtime/v2/kernel.cc'])
+            self.assertEqual(ext_pr['linked_issues'], ['cann/ge#88'])
+            self.assertEqual(ext_pr['reply_status'], 'replied')
             self.assertEqual(client.file_calls, 1)
             # Second incremental run with identical updated_at should reuse details without calling /files
             res2 = collect_repo_prs(client, 'cann/ge', res1, CONFIG, NOW, full=False, cache_dir=Path(tmp), internal_logins={'internal-dev'})
             self.assertEqual(client.file_calls, 1)
-            self.assertEqual(res2['prs'][0]['files'], ['runtime/v2/kernel.cc'])
+            ext_pr2 = next(p for p in res2['prs'] if p['number'] == '2')
+            self.assertEqual(ext_pr2['files'], ['runtime/v2/kernel.cc'])
 
 if __name__ == '__main__':
     unittest.main()

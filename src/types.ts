@@ -18,6 +18,7 @@ export type Issue = {
   body: string;
   url: string;
   author: Person;
+  author_role?: "internal" | "external";
   assignees: Person[];
   workload_owner?: string;
   state: string;
@@ -80,6 +81,7 @@ export type PullRequest = {
   body: string;
   url: string;
   author: Person;
+  author_role?: "internal" | "external";
   assignees: Person[];
   testers: Person[];
   state: string;

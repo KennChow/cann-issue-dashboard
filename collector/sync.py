@@ -179,18 +179,28 @@ def collect_repo_prs(client, repo, old, config, now, full=False, cache_dir=None,
             if author_cf and author_cf not in internal_set and not previous_pr.get('details_complete') and identity not in changed_ids:
                 detail = client.get(f"{repo}/pulls/{previous_pr['number']}")
                 raw.append(detail)
+    valid_raw = []
     ext_raw = []
+    intr_need_comments = []
     for raw_pr in raw:
         author_login = user(raw_pr.get('user') or raw_pr.get('author'))['login']
-        if not author_login or author_login.casefold() in internal_set:
+        if not author_login:
             continue
-        normalize_pr(repo, raw_pr)
-        ext_raw.append(raw_pr)
-    rows = {} if full else {
-        pid: copy.deepcopy(p)
-        for pid, p in old_rows.items()
-        if (p.get('author') or {}).get('login', '').casefold() not in internal_set
-    }
+        pr_norm = normalize_pr(repo, raw_pr)
+        is_internal = author_login.casefold() in internal_set
+        valid_raw.append((raw_pr, is_internal))
+        if not is_internal:
+            ext_raw.append(raw_pr)
+        else:
+            if (pr_norm['state'] in ('open', 'merged')
+                    and not pr_norm['draft']
+                    and pr_norm['mergeable']
+                    and pr_norm['ci_status'] == 'passed'):
+                ci_dt = date(pr_norm.get('ci_passed_at') or pr_norm['created_at'])
+                end_dt = date(pr_norm.get('merged_at') or now.isoformat())
+                if pr_norm['state'] == 'open' or (end_dt - ci_dt).total_seconds() > 24 * 3600:
+                    intr_need_comments.append(raw_pr)
+    rows = {} if full else {pid: copy.deepcopy(p) for pid, p in old_rows.items()}
     warnings = []
     def fetch_details(raw_pr):
         identity = repo + '!' + str(raw_pr.get('number'))
@@ -260,6 +270,42 @@ def collect_repo_prs(client, repo, old, config, now, full=False, cache_dir=None,
             fallback_comments = before.get('comments', []) if before else []
             fallback_issues = before.get('linked_issues', []) if before else []
             return identity, (fallback_files, fallback_comments, fallback_issues, str(exc))
+    def fetch_internal_comments(raw_pr):
+        identity = repo + '!' + str(raw_pr.get('number'))
+        before = old_rows.get(identity)
+        is_conf = raw_pr.get('visibility_reason') not in (None, 'public')
+        head_sha = ((raw_pr.get('head') or {}).get('sha')
+                    or (raw_pr.get('diff_refs') or {}).get('head_sha')
+                    or raw_pr.get('head_sha') or '')
+        comment_count = raw_pr.get('notes') if raw_pr.get('notes') is not None else raw_pr.get('comments')
+        if (before and before.get('details_complete')
+                and before.get('updated_at') == raw_pr.get('updated_at')
+                and before.get('comment_count') == comment_count
+                and before.get('head_sha', '') == head_sha):
+            return identity, (before.get('comments', []), before.get('first_reply_at'), None)
+        cache_file = None
+        if cache_dir:
+            cache_key = hashlib.sha256(
+                (identity + str(raw_pr.get('updated_at')) + str(comment_count) + str(head_sha) + ('#conf' if is_conf else '')).encode()
+            ).hexdigest()
+            cache_file = cache_dir / (cache_key + '.json')
+            cached = read(cache_file, {})
+            if cached.get('at') and now - date(cached['at']) < timedelta(hours=24):
+                return identity, (cached.get('comments', []), None, None)
+        try:
+            if comment_count == 0:
+                fetched_comments = []
+            else:
+                fetched_comments = pr_comments(
+                    client.pages(f"{repo}/pulls/{raw_pr['number']}/comments"),
+                    confidential=is_conf,
+                    bots=config.get('bots', []),
+                )
+            if cache_file:
+                atomic(cache_file, {'at': now.isoformat(), 'files': [], 'comments': fetched_comments, 'linked_issues': []})
+            return identity, (fetched_comments, None, None)
+        except SyncError as exc:
+            return identity, (before.get('comments', []) if before else [], before.get('first_reply_at') if before else None, str(exc))
     print(repo, 'fetching PR details for', len(ext_raw), 'external PRs', flush=True)
     with ThreadPoolExecutor(max_workers=8) as pool:
         detail_results = {}
@@ -267,25 +313,58 @@ def collect_repo_prs(client, repo, old, config, now, full=False, cache_dir=None,
             detail_results[identity] = result
             if completed % 50 == 0:
                 print(repo, 'PR details', completed, '/', len(ext_raw), flush=True)
-    for raw_pr in ext_raw:
+        intr_results = {}
+        for identity, result in pool.map(fetch_internal_comments, intr_need_comments):
+            intr_results[identity] = result
+    for raw_pr, is_internal in valid_raw:
         pr = normalize_pr(repo, raw_pr)
-        files, fetched_comments, linked, detail_error = detail_results[pr['id']]
-        pr['files'] = files
-        pr['comments'] = fetched_comments
-        pr['linked_issues'] = linked
-        pr['details_complete'] = detail_error is None
-        if detail_error:
-            warnings.append('PR !' + pr['number'] + ': ' + detail_error)
+        pr['author_role'] = 'internal' if is_internal else 'external'
+        if not is_internal:
+            files, fetched_comments, linked, detail_error = detail_results[pr['id']]
+            pr['files'] = files
+            pr['comments'] = fetched_comments
+            pr['linked_issues'] = linked
+            pr['details_complete'] = detail_error is None
+            if detail_error:
+                warnings.append('PR !' + pr['number'] + ': ' + detail_error)
+        else:
+            if pr['state'] != 'open':
+                pr['body'] = ''
+            if pr['id'] in intr_results:
+                fetched_comments, prev_reply_at, detail_error = intr_results[pr['id']]
+                pr['comments'] = fetched_comments
+                pr['details_complete'] = detail_error is None
+                if prev_reply_at and not fetched_comments:
+                    pr['first_reply_at'] = prev_reply_at
+            else:
+                pr['details_complete'] = True
+                if (pr['state'] == 'merged'
+                        and not pr['draft']
+                        and pr['mergeable']
+                        and pr['ci_status'] == 'passed'):
+                    pr['first_reply_at'] = pr.get('first_reply_at') or pr.get('merged_at') or pr['updated_at']
         rows[pr['id']] = pr
     for pr in rows.values():
-        pr['linked_issues'] = extract_linked_issues(
-            repo,
-            '' if pr.get('confidential') else pr.get('title', ''),
-            '' if pr.get('confidential') else pr.get('body', ''),
-            pr.get('linked_issues', []),
-            known_issue_ids,
-        )
+        author_cf = (pr.get('author') or {}).get('login', '').casefold()
+        is_internal = author_cf in internal_set
+        pr['author_role'] = 'internal' if is_internal else 'external'
+        if not is_internal:
+            pr['linked_issues'] = extract_linked_issues(
+                repo,
+                '' if pr.get('confidential') else pr.get('title', ''),
+                '' if pr.get('confidential') else pr.get('body', ''),
+                pr.get('linked_issues', []),
+                known_issue_ids,
+            )
         pr['reply_status'], pr['first_reply_at'] = pr_reply(pr, config.get('bots', []))
+        if is_internal and pr['state'] != 'open':
+            pr['comments'] = []
+            pr['body'] = ''
+            pr['assignees'] = []
+            pr['testers'] = []
+            pr['head_sha'] = ''
+            if isinstance(pr.get('author'), dict):
+                pr['author']['avatar'] = ''
         pr['metrics'] = pr_status(pr, now)
     conf_count = sum(bool(p.get('confidential')) for p in rows.values())
     return {
@@ -347,11 +426,11 @@ def run(args, client=None):
             repositories[repo]['pr_last_full'] = pr_res['pr_last_full']
             repositories[repo]['pr_confidential_count'] = pr_res['pr_confidential_count']
             repositories[repo].setdefault('warnings', []).extend(pr_res['pr_warnings'])
-            print(repo, pr_res['pr_mode'], len(pr_res['prs']), 'external PRs', flush=True)
+            print(repo, pr_res['pr_mode'], len(pr_res['prs']), 'PRs', flush=True)
         except (SyncError, ValueError, TypeError, KeyError) as exc:
             message = str(exc) if isinstance(exc, SyncError) else 'Malformed upstream PR data'
             repositories[repo]['prs'] = old.get('prs', [])
-            repositories[repo].setdefault('warnings', []).append('外部 PR: ' + message)
+            repositories[repo].setdefault('warnings', []).append('PR: ' + message)
     cache_path = ROOT / '.cache/reports.json'
     cache = read(cache_path, {})
     report_index = previous.get('report_index', {})
@@ -376,13 +455,16 @@ def run(args, client=None):
         issues.extend(record['issues'])
         record.setdefault('prs', [])
         for pr in record['prs']:
-            pr['linked_issues'] = extract_linked_issues(
-                repo,
-                '' if pr.get('confidential') else pr.get('title', ''),
-                '' if pr.get('confidential') else pr.get('body', ''),
-                pr.get('linked_issues', []),
-                known_issue_ids,
-            )
+            author_cf = (pr.get('author') or {}).get('login', '').casefold()
+            pr['author_role'] = 'internal' if author_cf in internal_logins else 'external'
+            if pr['author_role'] != 'internal':
+                pr['linked_issues'] = extract_linked_issues(
+                    repo,
+                    '' if pr.get('confidential') else pr.get('title', ''),
+                    '' if pr.get('confidential') else pr.get('body', ''),
+                    pr.get('linked_issues', []),
+                    known_issue_ids,
+                )
             pr['reply_status'], pr['first_reply_at'] = pr_reply(pr, config.get('bots', []))
             pr['metrics'] = pr_status(pr, now)
         record['pr_stats'] = pr_stats(record['prs'])

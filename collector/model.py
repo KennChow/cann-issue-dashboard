@@ -198,12 +198,14 @@ def normalize_pr(repo, row):
     raw_labels = row.get('labels') or []
     label_names = []
     ci_passed_at = row.get('ci_passed_at') or None
+    lgtm_times = []
     for lbl in raw_labels:
         if isinstance(lbl, dict):
             name = lbl.get('name') or ''
             if name:
                 label_names.append(name)
-            if name.lower() == 'ci-pipeline-passed':
+            lname = name.lower()
+            if lname == 'ci-pipeline-passed':
                 ts = lbl.get('updated_at') or lbl.get('created_at')
                 if ts:
                     try:
@@ -211,12 +213,27 @@ def normalize_pr(repo, row):
                         ci_passed_at = ts
                     except SyncError:
                         pass
+            elif lname in ('lgtm', 'approved'):
+                ts = lbl.get('updated_at') or lbl.get('created_at')
+                if ts:
+                    try:
+                        date(ts)
+                        lgtm_times.append(ts)
+                    except SyncError:
+                        pass
         elif lbl:
             label_names.append(str(lbl))
     lower_labels = {l.lower() for l in label_names}
+    lgtm_ts = min(lgtm_times) if lgtm_times else None
     if 'ci-pipeline-passed' in lower_labels:
         ci_status = 'passed'
         if not ci_passed_at:
+            ci_passed_at = row['created_at']
+        elif (lgtm_ts and date(lgtm_ts) < date(ci_passed_at)) or (
+            merged
+            and (date(ci_passed_at) - date(row['created_at'])).total_seconds() > 48 * 3600
+            and (date(merged) - date(ci_passed_at)).total_seconds() < 4 * 3600
+        ):
             ci_passed_at = row['created_at']
     elif 'ci-pipeline-failed' in lower_labels:
         ci_status = 'failed'
@@ -256,6 +273,7 @@ def normalize_pr(repo, row):
         updated_at=row['updated_at'],
         closed_at=closed,
         merged_at=merged,
+        first_reply_at=lgtm_ts,
         url=f'https://gitcode.com/{repo}/merge_requests/{number}',
         labels=label_names,
         comment_count=comment_count,
@@ -327,6 +345,8 @@ def pr_reply(pr, bots=()):
             return 'replied', after_ci[0]['created_at']
         if pr.get('state') == 'merged':
             return 'replied', valid[0]['created_at']
+    if pr.get('author_role') == 'internal' and pr.get('first_reply_at'):
+        return 'replied', pr['first_reply_at']
     if pr.get('details_complete'):
         return 'unreplied', None
     return 'unknown', None

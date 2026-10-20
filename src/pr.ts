@@ -392,6 +392,15 @@ export function resolvePrAttribution(
   dutyData: DutyData | undefined,
   issueMap: Map<string, Issue>,
 ): PrAttribution {
+  if (pr.author_role === "internal") {
+    return {
+      fields: [],
+      owners: [],
+      committers: [],
+      linkedIssues: [],
+      issueMaintainers: [],
+    };
+  }
   const fields: PrDutyFieldRef[] = [];
   const fieldKeySet = new Set<string>();
   const addField = (f: PrDutyFieldRef) => {
@@ -574,6 +583,7 @@ export function computePrPersonWorkloads(
   };
 
   for (const pr of prs) {
+    if (pr.author_role === "internal") continue;
     const attr = resolvePrAttribution(pr, dutyData, issueMap);
     const sla = evaluatePrSla(pr, snapshotIso);
 

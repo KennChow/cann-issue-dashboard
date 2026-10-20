@@ -72,7 +72,7 @@ export function evaluatePrSla(pr: PullRequest, snapshotIso: string): PrSlaDetail
       });
     }
     const body = (c.body || "").trim();
-    if (!body || body.startsWith("/")) continue;
+    if (!body) continue;
     if (commenter === authorLogin) continue;
     const ms = Date.parse(c.created_at);
     if (!Number.isNaN(ms) && ms >= createdMs) {
@@ -83,7 +83,11 @@ export function evaluatePrSla(pr: PullRequest, snapshotIso: string): PrSlaDetail
   let firstHumanReplyAt: string | null = null;
   if (validHumanComments.length > 0) {
     const afterCi = validHumanComments.find((c) => c.ms >= ciStartMs);
-    firstHumanReplyAt = (afterCi || validHumanComments[0]).created_at;
+    if (afterCi) {
+      firstHumanReplyAt = afterCi.created_at;
+    } else if (pr.state === "merged") {
+      firstHumanReplyAt = validHumanComments[0].created_at;
+    }
   } else if (pr.first_reply_at) {
     firstHumanReplyAt = pr.first_reply_at;
   }
@@ -108,9 +112,8 @@ export function evaluatePrSla(pr: PullRequest, snapshotIso: string): PrSlaDetail
   }
 
   const firstRespQualified = respEligible
-    ? firstHumanReplyAt !== null
-      ? Date.parse(firstHumanReplyAt) <= ciStartMs ||
-        workdayHours(ciStartIso, firstHumanReplyAt) <= 24
+    ? firstRespWorkHours !== null
+      ? firstRespWorkHours <= 24
       : sinceCiWorkHours <= 24
     : false;
   const firstRespUnqualified = respEligible && !firstRespQualified;

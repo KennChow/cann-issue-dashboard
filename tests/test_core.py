@@ -284,7 +284,7 @@ class PullRequestTests(unittest.TestCase):
         pr['details_complete'] = True
         pr['comments'] = [
             {'id': '1', 'author': {'login': 'bot'}, 'body': 'ci passed', 'created_at': (NOW - timedelta(hours=199)).isoformat(), 'system': False},
-            {'id': '2', 'author': {'login': 'member'}, 'body': '/lgtm', 'created_at': (NOW - timedelta(hours=198)).isoformat(), 'system': False},
+            {'id': '2', 'author': {'login': 'ext-author'}, 'body': '/compile', 'created_at': (NOW - timedelta(hours=198)).isoformat(), 'system': False},
         ]
         status_val, reply_at = pr_reply(pr, ['bot'])
         self.assertEqual(status_val, 'unreplied')

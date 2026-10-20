@@ -311,7 +311,7 @@ def pr_reply(pr, bots=()):
         if c.get('system'):
             continue
         body = (c.get('body') or '').strip()
-        if not body or body.startswith('/'):
+        if not body:
             continue
         login_cf = (c.get('author') or {}).get('login', '').casefold()
         if not login_cf or login_cf == author_cf:
@@ -323,8 +323,10 @@ def pr_reply(pr, bots=()):
     if valid:
         ci_dt = date(pr['ci_passed_at']) if pr.get('ci_passed_at') else created_dt
         after_ci = [c for c in valid if date(c['created_at']) >= ci_dt]
-        chosen = after_ci[0] if after_ci else valid[0]
-        return 'replied', chosen['created_at']
+        if after_ci:
+            return 'replied', after_ci[0]['created_at']
+        if pr.get('state') == 'merged':
+            return 'replied', valid[0]['created_at']
     if pr.get('details_complete'):
         return 'unreplied', None
     return 'unknown', None

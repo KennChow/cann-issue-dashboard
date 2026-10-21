@@ -328,6 +328,233 @@ def _owner_login(issue):
     return '未分配'
 
 
+def evaluate_pr_sla(pr, snapshot_iso):
+    """Use the same readiness and workday response rules as src/pr.ts."""
+    ready = not pr.get('draft') and bool(pr.get('mergeable')) and pr.get('ci_status') == 'passed'
+    opened = pr.get('state') == 'open'
+    eligible = ready and pr.get('state') in ('open', 'merged')
+    ci_start = pr.get('ci_passed_at') or pr.get('created_at')
+    ci_dt = parse_iso(ci_start)
+    created_dt = parse_iso(pr.get('created_at'))
+    author = ((pr.get('author') or {}).get('login') or '').lower()
+    valid = []
+    for comment in pr.get('comments') or []:
+        login = ((comment.get('author') or {}).get('login') or '').lower()
+        at = parse_iso(comment.get('created_at'))
+        if (comment.get('system') or not str(comment.get('body') or '').strip()
+                or not login or login == author or login in BOT_LOGINS | {'atomgit-bot'}
+                or login.endswith(('[bot]', '-bot'))):
+            continue
+        if at and created_dt and at >= created_dt:
+            valid.append(comment)
+    reply = next((c['created_at'] for c in valid if ci_dt and parse_iso(c['created_at']) >= ci_dt), None)
+    if not reply and valid and pr.get('state') == 'merged':
+        reply = valid[0]['created_at']
+    if not valid and pr.get('first_reply_at'):
+        reply = pr['first_reply_at']
+    end = pr.get('merged_at') or pr.get('closed_at') or snapshot_iso
+    elapsed = workday_hours(ci_start, end)
+    reply_hours = None
+    if reply:
+        start = ci_start if ci_dt and parse_iso(reply) >= ci_dt else pr.get('created_at')
+        reply_hours = workday_hours(start, reply)
+    qualified = eligible and (reply_hours <= 24 if reply_hours is not None else elapsed <= 24)
+    return {
+        'ready': opened and ready,
+        'blocked': opened and not ready,
+        'eligible': eligible,
+        'qualified': qualified,
+        'reply_hours': reply_hours,
+        'unreplied': opened and ready and reply is None,
+        'timeout': opened and ready and reply is None and workday_hours(ci_start, snapshot_iso) > 24,
+        'elapsed': workday_hours(ci_start, snapshot_iso),
+    }
+
+
+def _pr_summary(prs, details):
+    total = len(prs)
+    merged = sum(p.get('state') == 'merged' for p in prs)
+    closed = sum(p.get('state') == 'closed' for p in prs)
+    eligible = sum(details[p['id']]['eligible'] for p in prs)
+    qualified = sum(details[p['id']]['qualified'] for p in prs)
+    return {
+        'total': total,
+        'open': sum(p.get('state') == 'open' for p in prs),
+        'merged': merged,
+        'closed': closed,
+        'closure_rate': f'{(merged + closed) / total * 100:.2f}%' if total else '—',
+        'ready': sum(details[p['id']]['ready'] for p in prs),
+        'blocked': sum(details[p['id']]['blocked'] for p in prs),
+        'eligible': eligible,
+        'qualified': qualified,
+        'response_rate': f'{qualified / eligible * 100:.2f}%' if eligible else '—',
+        'unreplied': sum(details[p['id']]['unreplied'] for p in prs),
+        'timeout': sum(details[p['id']]['timeout'] for p in prs),
+    }
+
+
+def _analyze_prs(previous, current):
+    repos = current.get('repositories') or {}
+    rows = [p for r in repos.values() for p in r.get('prs', [])]
+    old_repos = previous.get('repositories') or {}
+    old = {p['id']: p for r in old_repos.values() for p in r.get('prs', [])}
+    details = {p['id']: evaluate_pr_sla(p, current.get('generated_at')) for p in rows}
+    groups = {key: [] for key in ('new', 'merged', 'closed', 'commented', 'timeout', 'ready', 'blocked', 'review')}
+    changed = 0
+    comments = 0
+    for pr in rows:
+        before = old.get(pr['id'])
+        if before is None:
+            groups['new'].append(pr)
+        else:
+            if any(pr.get(k) != before.get(k) for k in (
+                    'title', 'body', 'state', 'updated_at', 'assignees', 'testers', 'comments',
+                    'draft', 'mergeable', 'ci_status', 'ci_passed_at', 'files', 'linked_issues')):
+                changed += 1
+            for state in ('merged', 'closed'):
+                if pr.get('state') == state and before.get('state') != state:
+                    groups[state].append(pr)
+        old_comments = {c['id'] for c in (before or {}).get('comments', []) if 'id' in c}
+        added = {c['id'] for c in pr.get('comments', []) if 'id' in c} - old_comments
+        comments += len(added)
+        if before and added:
+            groups['commented'].append(pr)
+        for risk in ('timeout', 'ready', 'blocked'):
+            if details[pr['id']][risk]:
+                groups[risk].append(pr)
+        if pr.get('state') == 'open' and any(
+                c.get('comment_type') == 'diff_comment' and c.get('resolved') is False
+                and not c.get('system')
+                and ((c.get('author') or {}).get('login') or '').lower()
+                != ((pr.get('author') or {}).get('login') or '').lower()
+                for c in pr.get('comments', [])):
+            groups['review'].append(pr)
+    for name, items in groups.items():
+        items.sort(key=lambda p: (
+            -details[p['id']]['elapsed'] if name == 'timeout' else p.get('created_at', ''), p['id']))
+    return {
+        'available': any('prs' in r for r in repos.values()),
+        'has_baseline': any('prs' in r for r in old_repos.values()),
+        'stats': _pr_summary(rows, details),
+        'repos': [(name, _pr_summary(r.get('prs', []), details)) for name, r in sorted(repos.items())],
+        'groups': groups,
+        'changed': changed,
+        'comments': comments,
+        'details': details,
+        'warnings': [
+            f'{name}：PR 数据可能为上次保留值；上次成功采集 {fmt_bjt(r.get("pr_last_success"))}（北京时间）'
+            for name, r in sorted(repos.items())
+            if r.get('error') or 'prs' not in r or any('PR' in str(w) for w in r.get('warnings', []))
+        ],
+    }
+
+
+PR_GROUPS = (
+    ('new', '本次新增 PR（首次扫描到）', 15),
+    ('merged', '本次新合并 PR', 15),
+    ('closed', '本次新关闭 PR（未合并）', 15),
+    ('commented', '本次新增评论 PR', 15),
+    ('timeout', 'PR 首次响应超时 >24h 工作日', 8),
+    ('ready', '待合并 PR（非草稿、可合并且 CI 通过）', 8),
+    ('blocked', '合并受阻 PR（草稿、冲突或 CI 未通过/未知）', 8),
+    ('review', '存在未解决评审意见的 PR', 8),
+)
+
+
+def _pr_overview_lines(ctx):
+    st = ctx['stats']
+    groups = ctx['groups']
+    lines = [
+        '统计范围与 PR数据总览一致，包含当前已采集的内部与外部贡献者 PR。',
+        'SLA 口径：合并或关闭均计入闭环；非草稿、可合并且 CI 通过的 Open/Merged PR 纳入首响统计，'
+        '从 CI 通过时间（缺失时从创建时间）起算，排除周末及中国大陆法定节假日、包含调休补班日。',
+        f'PR 全量：共 {st["total"]} / 待处理 {st["open"]} / 已合并 {st["merged"]} / 未合并关闭 {st["closed"]}',
+        f'PR 闭环率：{st["closure_rate"]} | 24h 首响达标率：{st["response_rate"]}'
+        f'（达标 {st["qualified"]} / 有效样本 {st["eligible"]}）',
+        f'PR 待关注：待合并 {st["ready"]} / 合并受阻 {st["blocked"]} / '
+        f'未首响 {st["unreplied"]} / 首响超时 {st["timeout"]}',
+        f'本次 PR：新增 {len(groups["new"])} / 更新 {ctx["changed"]} / 新合并 {len(groups["merged"])} / '
+        f'新关闭 {len(groups["closed"])} / 新评论 {ctx["comments"]}',
+    ]
+    if not ctx['has_baseline']:
+        lines.append('首次采集 PR，无历史 PR 基线；新增列表为首次发现。')
+    lines.extend(ctx['warnings'])
+    return lines
+
+
+def _pr_item_text(pr, ctx):
+    state = {'open': '待处理', 'merged': '已合并', 'closed': '未合并关闭'}.get(pr.get('state'), '未知')
+    author = _clean_text((pr.get('author') or {}).get('login'))
+    text = (f'{pr["id"]} [{state}] {_clean_text(pr.get("title"))} | 提交人：{author} | '
+            f'指派：{_format_assignees(pr)} | CI：{_clean_text(pr.get("ci_status"))}')
+    if ctx['details'][pr['id']]['timeout']:
+        text += f' | CI 起已等待 {ctx["details"][pr["id"]]["elapsed"]:.1f} 工作日小时未首响'
+    return text
+
+
+def _render_pr_text(ctx):
+    lines = ['', '【六、PR 通报】']
+    if not ctx['available']:
+        return lines + ['尚未采集 PR 数据。']
+    lines.extend(_pr_overview_lines(ctx))
+    lines.append('PR 分仓统计：')
+    for repo, st in ctx['repos']:
+        lines.append(f'- {repo}：共 {st["total"]} / 待处理 {st["open"]} / 已合并 {st["merged"]} / '
+                     f'未合并关闭 {st["closed"]} / 闭环率 {st["closure_rate"]} / '
+                     f'首响达标 {st["response_rate"]} / 待合并 {st["ready"]} / '
+                     f'合并受阻 {st["blocked"]} / 首响超时 {st["timeout"]}')
+    for key, title, limit in PR_GROUPS:
+        items = ctx['groups'][key]
+        if not items:
+            continue
+        lines.append(f'{title}（共 {len(items)} 项，展示前 {min(limit, len(items))} 项）：')
+        for pr in items[:limit]:
+            lines.extend([f'- {_pr_item_text(pr, ctx)}', f'  {pr["url"]}'])
+        if len(items) > limit:
+            lines.append(f'  …另有 {len(items) - limit} 项，详见 PR详情。')
+    return lines
+
+
+def _render_pr_html(ctx):
+    blocks = [
+        '<div style="margin-top:24px;">'
+        '<div style="margin-bottom:10px;font-size:15px;font-weight:700;color:#0f172a;'
+        'border-left:4px solid #2563eb;padding-left:10px;">六、PR 通报</div>'
+    ]
+    if not ctx['available']:
+        return ''.join(blocks) + '<p>尚未采集 PR 数据。</p></div>'
+    blocks.extend(f'<p style="margin:6px 0;font-size:12px;">{html.escape(line)}</p>' for line in _pr_overview_lines(ctx))
+    columns = (('仓库', None), ('总数', 'total'), ('待处理', 'open'), ('已合并', 'merged'),
+               ('未合并关闭', 'closed'), ('闭环率', 'closure_rate'), ('首响达标', 'response_rate'),
+               ('待合并', 'ready'), ('受阻', 'blocked'), ('首响超时', 'timeout'))
+    cell = 'padding:8px 6px;border-bottom:1px solid #e2e8f0;'
+    blocks.append('<table width="100%" cellpadding="0" cellspacing="0" '
+                  'style="border-collapse:collapse;font-size:12px;margin-top:12px;">'
+                  '<tr style="background:#f1f5f9;">' + ''.join(
+                      f'<th style="{cell}">{label}</th>' for label, _ in columns) + '</tr>')
+    for repo, st in ctx['repos']:
+        url = html.escape(f'{DASHBOARD_URL}#/prs?repo={quote(repo, safe="")}')
+        blocks.append(f'<tr><td style="{cell}"><a href="{url}">{html.escape(repo)}</a></td>'
+                      + ''.join(f'<td style="{cell}text-align:center;">{st[key]}</td>' for _, key in columns[1:])
+                      + '</tr>')
+    blocks.append('</table>')
+    for key, title, limit in PR_GROUPS:
+        items = ctx['groups'][key]
+        if not items:
+            continue
+        blocks.append(f'<p style="margin:16px 0 6px;font-size:13px;font-weight:700;">'
+                      f'{html.escape(title)}（共 {len(items)} 项，展示前 {min(limit, len(items))} 项）</p>')
+        for pr in items[:limit]:
+            blocks.append(f'<p style="margin:6px 0;font-size:12px;">'
+                          f'<a href="{html.escape(pr["url"], quote=True)}" style="color:#2563eb;text-decoration:none;">'
+                          f'{html.escape(_pr_item_text(pr, ctx))}</a></p>')
+        if len(items) > limit:
+            blocks.append(f'<p style="font-size:12px;">…另有 {len(items) - limit} 项，详见 PR详情。</p>')
+    blocks.append(f'<p style="font-size:12px;"><a href="{DASHBOARD_URL}#/pr-dashboard">PR数据总览 ↗</a>'
+                  f' · <a href="{DASHBOARD_URL}#/prs">PR详情 ↗</a></p></div>')
+    return ''.join(blocks)
+
+
 def _analyze(previous, current, outcome='success'):
     repos = current.get('repositories', {})
     snapshot_iso = current.get('generated_at', '')
@@ -474,8 +701,13 @@ def _analyze(previous, current, outcome='success'):
         f'[CANN] Issue 巡检 | 待处理 {counts["open"]} · 超期 {counts["overdue"]} · '
         f'新增 {len(new_issues)} / 更新 {changed}'
     )
+    pr_report = _analyze_prs(previous, current)
+    if pr_report['available']:
+        subject = subject.replace('Issue 巡检', 'Issue / PR 巡检', 1)
+        subject += f' | PR 待处理 {pr_report["stats"]["open"]} · 新增 {len(pr_report["groups"]["new"])}'
 
     return {
+        'pr_report': pr_report,
         'subject': subject,
         'at': at,
         'snapshot_iso': snapshot_iso,
@@ -691,6 +923,8 @@ def render(previous, current, outcome='success'):
                 f'含 AI 报告 {st.get("has_report", 0)}）| 仓库：{repos_str}'
             )
 
+    lines.extend(_render_pr_text(ctx['pr_report']))
+
     errors = ctx['errors']
     if outcome != 'success' or errors:
         lines += ['', '扫描异常：部分数据为上次保留值。']
@@ -703,9 +937,12 @@ def render(previous, current, outcome='success'):
     lines += [
         '',
         f'看板：{DASHBOARD_URL}',
-        f'Issue 工作台：{DASHBOARD_URL}#/issues',
+        f'Issue数据总览：{DASHBOARD_URL}#/dashboard',
+        f'Issue详情：{DASHBOARD_URL}#/issues',
+        f'PR数据总览：{DASHBOARD_URL}#/pr-dashboard',
+        f'PR详情：{DASHBOARD_URL}#/prs',
         f'内部维护人总表：{DASHBOARD_URL}#/members',
-        f'GE 责任田查询：{DASHBOARD_URL}#/duty',
+        f'责任田查询：{DASHBOARD_URL}#/duty',
     ]
     return '\n'.join(lines) + '\n'
 
@@ -1156,7 +1393,7 @@ def render_html(previous, current, outcome='success'):
           <tr>
             <td>
               <div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#93c5fd;font-weight:700;">CANN ISSUE OBSERVATORY · 闭环监控巡检报告</div>
-              <div style="margin-top:4px;font-size:20px;font-weight:800;color:#ffffff;">四仓公共 Issue 态势与 SLA 巡检汇总</div>
+              <div style="margin-top:4px;font-size:20px;font-weight:800;color:#ffffff;">四仓 Issue / PR 态势与 SLA 巡检汇总</div>
               <div style="margin-top:4px;font-size:12px;color:#cbd5e1;">快照时间：{html.escape(ctx["at"])}（北京时间 UTC+8） · 本次新增 <strong>{len(ctx["new_issues"])}</strong> / 更新 <strong>{ctx["changed"]}</strong> / 新评论 <strong>{ctx["new_comments_total"]}</strong> / 新 AI 报告 <strong>{ctx["new_reports_total"]}</strong></div>
             </td>
             <td align="right" valign="top" style="white-space:nowrap;">
@@ -1171,10 +1408,12 @@ def render_html(previous, current, outcome='success'):
     <tr>
       <td style="padding:10px 24px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:12px;color:#475569;">
         <strong>快捷直达：</strong>
-        <a href="{DASHBOARD_URL}#/dashboard" style="color:#2563eb;text-decoration:none;margin-right:12px;">运行总览</a>
-        <a href="{DASHBOARD_URL}#/issues" style="color:#2563eb;text-decoration:none;margin-right:12px;">Issue 工作台</a>
+        <a href="{DASHBOARD_URL}#/dashboard" style="color:#2563eb;text-decoration:none;margin-right:12px;">Issue数据总览</a>
+        <a href="{DASHBOARD_URL}#/issues" style="color:#2563eb;text-decoration:none;margin-right:12px;">Issue详情</a>
+        <a href="{DASHBOARD_URL}#/pr-dashboard" style="color:#2563eb;text-decoration:none;margin-right:12px;">PR数据总览</a>
+        <a href="{DASHBOARD_URL}#/prs" style="color:#2563eb;text-decoration:none;margin-right:12px;">PR详情</a>
         <a href="{DASHBOARD_URL}#/members" style="color:#2563eb;text-decoration:none;margin-right:12px;">内部维护人总表</a>
-        <a href="{DASHBOARD_URL}#/duty" style="color:#2563eb;text-decoration:none;margin-right:12px;">GE 责任田查询</a>
+        <a href="{DASHBOARD_URL}#/duty" style="color:#2563eb;text-decoration:none;margin-right:12px;">责任田查询</a>
         <a href="{DASHBOARD_URL}#/issues?state=open&amp;internal=missing" style="color:#d97706;text-decoration:none;font-weight:600;margin-right:12px;">未分配内部维护人 ({counts["no_internal_assignee"]})</a>
         <a href="{DASHBOARD_URL}#/issues?state=open&amp;risk=overdue" style="color:#dc2626;text-decoration:none;font-weight:600;">已超期 ({counts["overdue"]})</a>
       </td>
@@ -1269,6 +1508,7 @@ def render_html(previous, current, outcome='success'):
 
         {risk_block_html}
         {owners_html_block}
+        {_render_pr_html(ctx['pr_report'])}
       </td>
     </tr>
 

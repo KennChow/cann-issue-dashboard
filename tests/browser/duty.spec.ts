@@ -46,7 +46,7 @@ test("automatic duty table, precise paths and multiple fuzzy candidates", async 
 }) => {
   await page.goto("/#/duty");
   await expect(
-    page.getByRole("heading", { name: "GE 责任田查询" }),
+    page.getByRole("heading", { name: "责任田查询" }),
   ).toBeVisible();
   await expect(
     page.locator('input[type="password"], input[type="file"]'),

@@ -1,7 +1,7 @@
 import copy
 import unittest
 from unittest.mock import patch
-from collector.scan_report import compute_official_sla, render, render_html, send_report, workday_hours
+from collector.scan_report import compute_official_sla, evaluate_pr_sla, render, render_html, send_report, workday_hours
 
 
 def item(number):
@@ -119,12 +119,118 @@ class ReportTests(unittest.TestCase):
 
         html_doc = render_html(before, after)
         self.assertIn('<!DOCTYPE html>', html_doc)
-        self.assertIn('四仓公共 Issue 态势与 SLA 巡检汇总', html_doc)
+        self.assertIn('四仓 Issue / PR 态势与 SLA 巡检汇总', html_doc)
         self.assertIn('3. 即将响应超时 &le;24h 工作日', html_doc)
         self.assertIn('4. 开启未响应超时 &gt;24h 工作日', html_doc)
         self.assertLess(html_doc.index('3. 即将响应超时'), html_doc.index('4. 开启未响应超时'))
         self.assertIn('本次新闭环 Issue', html_doc)
         self.assertIn('内部维护人待办负载 Top 10', html_doc)
+
+
+def pr_item(number, **overrides):
+    return {
+        'id': f'cann/ge!{number}', 'repo': 'cann/ge', 'state': 'open',
+        'title': '测试 PR', 'author': {'login': 'contributor'},
+        'created_at': '2026-10-12T01:00:00Z', 'ci_passed_at': '2026-10-14T01:00:00Z',
+        'draft': False, 'mergeable': True, 'ci_status': 'passed', 'comments': [],
+        'assignees': [{'login': 'reviewer', 'membership': 'internal'}],
+        'url': f'https://gitcode.com/cann/ge/merge_requests/{number}',
+        **overrides,
+    }
+
+
+class PrReportTests(unittest.TestCase):
+    def test_pr_summary_diffs_and_risks_in_both_formats(self):
+        before = snapshot([])
+        before['repositories']['cann/ge']['prs'] = [pr_item(n) for n in range(1, 5)]
+        after = copy.deepcopy(before)
+        after['generated_at'] = '2026-10-15T03:00:00Z'
+        prs = after['repositories']['cann/ge']['prs']
+        prs[0].update(state='merged', merged_at='2026-10-15T02:00:00Z')
+        prs[1].update(state='closed', closed_at='2026-10-15T02:00:00Z')
+        prs[2]['comments'] = [{
+            'id': 'review-1', 'body': '请修改', 'author': {'login': 'reviewer'},
+            'created_at': '2026-10-14T02:00:00Z', 'comment_type': 'diff_comment', 'resolved': False,
+        }]
+        prs[3]['draft'] = True
+        prs.append(pr_item(5, title='<script>alert("test")</script>', author_role='internal'))
+        text = render(before, after)
+        doc = render_html(before, after)
+        for output in (text, doc):
+            for phrase in (
+                'PR 全量：共 5 / 待处理 3 / 已合并 1 / 未合并关闭 1',
+                'PR 闭环率：40.00% | 24h 首响达标率：33.33%',
+                'PR 待关注：待合并 2 / 合并受阻 1 / 未首响 1 / 首响超时 1',
+                '本次 PR：新增 1 / 更新 4 / 新合并 1 / 新关闭 1 / 新评论 1',
+                '本次新合并 PR', '本次新关闭 PR（未合并）', '本次新增评论 PR',
+                '存在未解决评审意见的 PR', 'cann/ge!5', '指派：reviewer[内部]',
+                '#/pr-dashboard', '#/prs', 'https://gitcode.com/cann/ge/merge_requests/5',
+            ):
+                self.assertIn(phrase, output)
+        self.assertTrue(text.startswith('[CANN] Issue / PR 巡检'))
+        self.assertIn('PR 待处理 3 · 新增 1', text.splitlines()[0])
+        self.assertIn('&lt;script&gt;', doc)
+        self.assertNotIn('<script>', doc)
+
+    def test_pr_baseline_overlap_and_old_snapshots(self):
+        old = snapshot([])
+        current = copy.deepcopy(old)
+        current['repositories']['cann/ge']['prs'] = [pr_item(1)]
+        for render_report in (render, render_html):
+            self.assertIn('尚未采集 PR 数据', render_report({}, old))
+            self.assertIn('首次采集 PR，无历史 PR 基线', render_report(old, current))
+            self.assertIn('本次 PR：新增 1 / 更新 0', render_report(old, current))
+            unchanged = render_report(current, current)
+            self.assertIn('本次 PR：新增 0 / 更新 0 / 新合并 0 / 新关闭 0 / 新评论 0', unchanged)
+            self.assertNotIn('首次采集 PR', unchanged)
+        current['repositories']['cann/ge']['prs'] = []
+        self.assertIn('PR 全量：共 0', render(current, current))
+        self.assertIn('24h 首响达标率：—', render_html(current, current))
+
+    def test_pr_warning_retained_data_and_list_limits(self):
+        current = snapshot([])
+        record = current['repositories']['cann/ge']
+        record.update(prs=[pr_item(n) for n in range(20)],
+                      warnings=['PR !1: HTTP 500'], pr_last_success='2026-10-14T01:00:00Z')
+        for render_report in (render, render_html):
+            output = render_report(current, current, 'failure')
+            self.assertIn('PR 数据可能为上次保留值', output)
+            self.assertIn('2026-10-14 09:00', output)
+            self.assertIn('共 20 项，展示前 8 项', output)
+            self.assertIn('另有 12 项', output)
+            self.assertIn('上次保留值', output)
+            self.assertIn('本次 PR：新增 0 / 更新 0', output)
+
+    def test_pr_response_eligibility_ci_clock_and_bot_exclusion(self):
+        now = '2026-10-15T03:00:00Z'
+        ready = pr_item(1, ci_passed_at='2026-10-15T02:00:00Z')
+        result = evaluate_pr_sla(ready, now)
+        self.assertTrue(result['qualified'])
+        self.assertFalse(result['timeout'])
+        self.assertEqual(result['elapsed'], 1)
+        for overrides in ({'draft': True}, {'mergeable': False}, {'ci_status': 'failed'}, {'state': 'closed'}):
+            self.assertFalse(evaluate_pr_sla({**ready, **overrides}, now)['eligible'])
+        ready['ci_passed_at'] = '2026-10-14T01:00:00Z'
+        ready['comments'] = [
+            {'body': 'automated', 'author': {'login': 'atomgit-bot'}, 'created_at': '2026-10-14T02:00:00Z'},
+            {'body': 'self', 'author': {'login': 'contributor'}, 'created_at': '2026-10-14T02:00:00Z'},
+            {'body': 'system', 'author': {'login': 'reviewer'}, 'system': True, 'created_at': '2026-10-14T02:00:00Z'},
+            {'body': 'before CI', 'author': {'login': 'reviewer'}, 'created_at': '2026-10-13T02:00:00Z'},
+        ]
+        self.assertTrue(evaluate_pr_sla(ready, now)['timeout'])
+        ready['comments'].append({
+            'body': 'review', 'author': {'login': 'reviewer'}, 'created_at': '2026-10-14T02:00:00Z',
+        })
+        result = evaluate_pr_sla(ready, now)
+        self.assertTrue(result['qualified'])
+        self.assertFalse(result['timeout'])
+        self.assertEqual(result['reply_hours'], 1)
+        # The 24-hour boundary is inclusive; weekend and holidays do not consume SLA time.
+        self.assertTrue(evaluate_pr_sla(pr_item(1), '2026-10-15T01:00:00Z')['qualified'])
+        holiday = pr_item(1, ci_passed_at='2026-10-01T00:00:00Z')
+        self.assertTrue(evaluate_pr_sla(holiday, '2026-10-07T00:00:00Z')['qualified'])
+        merged = pr_item(1, state='merged', first_reply_at='2026-10-14T02:00:00Z')
+        self.assertEqual(evaluate_pr_sla(merged, now)['reply_hours'], 1)
 
 
 class MailTests(unittest.TestCase):

@@ -279,25 +279,25 @@ function App() {
             }
             href="#/dashboard"
           >
-            运行总览
+            Issue数据总览
           </a>
           <a
             className={view.includes("issues") ? "active" : ""}
             href="#/issues"
           >
-            Issue 工作台
+            Issue详情
           </a>
           <a
             className={isPrDash ? "active" : ""}
             href="#/pr-dashboard"
           >
-            PR 监控总览
+            PR数据总览
           </a>
           <a
             className={isPrList ? "active" : ""}
             href="#/prs"
           >
-            PR 工作台
+            PR详情
           </a>
           <a
             href="#/members"
@@ -306,7 +306,7 @@ function App() {
             内部维护人总表
           </a>
           <a href="#/duty" className={view.includes("duty") ? "active" : ""}>
-            GE 责任田
+            责任田查询
           </a>
         </nav>
         <span className="live">
@@ -319,16 +319,16 @@ function App() {
             <p className="eyebrow">COMMUNITY OPERATIONS / 闭环监控</p>
             <h1>
               {view.includes("duty")
-                ? "GE 责任田查询"
+                ? "责任田查询"
                 : view.includes("members")
                   ? "内部维护人总表"
                   : isPrDash
-                    ? "外部 PR 监控总览"
+                    ? "PR数据总览"
                     : isPrList
-                      ? "外部 PR 工作台"
+                      ? "PR详情"
                       : view.includes("issues")
-                        ? "Issue 工作台"
-                        : "让每一个问题得到回应"}
+                        ? "Issue详情"
+                        : "Issue数据总览"}
             </h1>
             <p className="muted">
               {isPrDash || isPrList
@@ -346,8 +346,8 @@ function App() {
                     view.includes("members")
                       ? "内部维护人总表"
                       : isPrDash
-                        ? "外部PR监控总览"
-                        : "大屏总览",
+                        ? "PR数据总览"
+                        : "Issue数据总览",
                     "main",
                     data.generated_at,
                   )

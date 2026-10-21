@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import type { Data } from "../../src/types";
 test("real dashboard drills down, preserves filters and opens issue", async ({
   page,
 }) => {
@@ -6,7 +7,7 @@ test("real dashboard drills down, preserves filters and opens issue", async ({
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "让每一个问题得到回应" }),
+    page.getByRole("heading", { name: "Issue数据总览" }),
   ).toBeVisible();
   await page.getByRole("button", { name: /已超期.*查看 Issue/ }).click();
   await expect(page).toHaveURL(/risk=overdue/);
@@ -40,7 +41,7 @@ test("exports dashboard, all filtered pages, and standalone issue details", asyn
   const fs = await import("node:fs/promises");
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "让每一个问题得到回应" }),
+    page.getByRole("heading", { name: "Issue数据总览" }),
   ).toBeVisible();
   let downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出大屏 HTML" }).click();
@@ -183,17 +184,24 @@ test("unified internal directory shows provenance and exports HTML", async ({
   const html = await fs.readFile(path, "utf8");
   expect(html).toContain("Chang-an-HW");
   expect(html).toContain("成员来源仓库");
+  // Workload cards contain active owners; directory members may have no open issues.
+  const data: Data = await (await page.request.get("/data/dashboard.json")).json();
+  const activeInternal = data.owners.find(
+    (owner) => owner.role === "internal" && owner.stats.open > 0,
+  );
+  expect(activeInternal).toBeDefined();
+  const ownerLogin = activeInternal!.person.login;
   await page.goto("/#/dashboard?owner_role=internal");
   await expect(
     page
       .locator(".owner")
-      .filter({ has: page.locator("strong", { hasText: "Chang-an-HW" }) }),
+      .filter({ has: page.getByText(ownerLogin, { exact: true }) }),
   ).toHaveCount(1);
   await page.goto("/#/dashboard?owner_role=external");
   await expect(
     page
       .locator(".owner")
-      .filter({ has: page.locator("strong", { hasText: "Chang-an-HW" }) }),
+      .filter({ has: page.getByText(ownerLogin, { exact: true }) }),
   ).toHaveCount(0);
 });
 test("official SLA metrics, time range filter, nav order, and submitter filter", async ({
@@ -205,7 +213,9 @@ test("official SLA metrics, time range filter, nav order, and submitter filter",
   ).toBeVisible();
   await expect(page.getByText(/digital\.hicann\.cn/)).toHaveCount(0);
   const navLinks = await page.locator("header nav a").allInnerTexts();
-  expect(navLinks.slice(0, 2)).toEqual(["运行总览", "Issue 工作台"]);
+  expect(navLinks).toEqual([
+    "Issue数据总览", "Issue详情", "PR数据总览", "PR详情", "内部维护人总表", "责任田查询",
+  ]);
   await expect(page.getByText("📖 统计规则说明")).toBeVisible();
   await expect(page.locator("details.sla-rules-box")).not.toHaveAttribute("open", "");
   for (const title of [

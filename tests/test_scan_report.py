@@ -171,6 +171,14 @@ class PrReportTests(unittest.TestCase):
         self.assertIn('PR 待处理 3 · 新增 1', text.splitlines()[0])
         self.assertIn('&lt;script&gt;', doc)
         self.assertNotIn('<script>', doc)
+        for html_phrase in (
+            'PR 分仓多维统计明细',
+            '本次 PR 扫描变更明细',
+            'PR 重点风险与待办清单',
+            '草稿 WIP',
+            '未解决评审 1',
+        ):
+            self.assertIn(html_phrase, doc)
 
     def test_pr_baseline_overlap_and_old_snapshots(self):
         old = snapshot([])

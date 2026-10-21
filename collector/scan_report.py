@@ -377,20 +377,36 @@ def _pr_summary(prs, details):
     closed = sum(p.get('state') == 'closed' for p in prs)
     eligible = sum(details[p['id']]['eligible'] for p in prs)
     qualified = sum(details[p['id']]['qualified'] for p in prs)
+    closure_rate_val = round((merged + closed) / total * 100, 2) if total else None
+    response_rate_val = round(qualified / eligible * 100, 2) if eligible else None
     return {
         'total': total,
         'open': sum(p.get('state') == 'open' for p in prs),
         'merged': merged,
         'closed': closed,
-        'closure_rate': f'{(merged + closed) / total * 100:.2f}%' if total else '—',
+        'closure_rate_val': closure_rate_val,
+        'closure_rate': f'{closure_rate_val:.2f}%' if closure_rate_val is not None else '—',
         'ready': sum(details[p['id']]['ready'] for p in prs),
         'blocked': sum(details[p['id']]['blocked'] for p in prs),
         'eligible': eligible,
         'qualified': qualified,
-        'response_rate': f'{qualified / eligible * 100:.2f}%' if eligible else '—',
+        'response_rate_val': response_rate_val,
+        'response_rate': f'{response_rate_val:.2f}%' if response_rate_val is not None else '—',
         'unreplied': sum(details[p['id']]['unreplied'] for p in prs),
         'timeout': sum(details[p['id']]['timeout'] for p in prs),
     }
+
+
+def _unresolved_review_count(pr):
+    author_login = ((pr.get('author') or {}).get('login') or '').lower()
+    return sum(
+        1 for c in pr.get('comments') or []
+        if isinstance(c, dict)
+        and c.get('comment_type') == 'diff_comment'
+        and c.get('resolved') is False
+        and not c.get('system')
+        and ((c.get('author') or {}).get('login') or '').lower() != author_login
+    )
 
 
 def _analyze_prs(previous, current):
@@ -422,12 +438,7 @@ def _analyze_prs(previous, current):
         for risk in ('timeout', 'ready', 'blocked'):
             if details[pr['id']][risk]:
                 groups[risk].append(pr)
-        if pr.get('state') == 'open' and any(
-                c.get('comment_type') == 'diff_comment' and c.get('resolved') is False
-                and not c.get('system')
-                and ((c.get('author') or {}).get('login') or '').lower()
-                != ((pr.get('author') or {}).get('login') or '').lower()
-                for c in pr.get('comments', [])):
+        if pr.get('state') == 'open' and _unresolved_review_count(pr) > 0:
             groups['review'].append(pr)
     for name, items in groups.items():
         items.sort(key=lambda p: (
@@ -449,15 +460,22 @@ def _analyze_prs(previous, current):
     }
 
 
-PR_GROUPS = (
-    ('new', '本次新增 PR（首次扫描到）', 15),
-    ('merged', '本次新合并 PR', 15),
-    ('closed', '本次新关闭 PR（未合并）', 15),
-    ('commented', '本次新增评论 PR', 15),
-    ('timeout', 'PR 首次响应超时 >24h 工作日', 8),
-    ('ready', '待合并 PR（非草稿、可合并且 CI 通过）', 8),
-    ('blocked', '合并受阻 PR（草稿、冲突或 CI 未通过/未知）', 8),
-    ('review', '存在未解决评审意见的 PR', 8),
+PR_DIFF_GROUPS = (
+    ('new', '本次新增 PR（首次扫描到）', 15, 'blue', '#eff6ff', '#bfdbfe', '#1e40af'),
+    ('merged', '本次新合并 PR', 15, 'green', '#f0fdf4', '#bbf7d0', '#166534'),
+    ('closed', '本次新关闭 PR（未合并）', 15, 'slate', '#f8fafc', '#e2e8f0', '#334155'),
+    ('commented', '本次新增评论 PR', 15, 'purple', '#f5f3ff', '#ddd6fe', '#5b21b6'),
+)
+
+PR_RISK_GROUPS = (
+    ('timeout', 'PR 首次响应超时 >24h 工作日', 8, '#fecaca', '#fef2f2', '#fee2e2', '#991b1b', '#7f1d1d'),
+    ('ready', '待合并 PR（非草稿、可合并且 CI 通过）', 8, '#bbf7d0', '#f0fdf4', '#dcfce7', '#166534', '#14532d'),
+    ('blocked', '合并受阻 PR（草稿、冲突或 CI 未通过/未知）', 8, '#fde68a', '#fffbeb', '#fefce8', '#92400e', '#713f12'),
+    ('review', '存在未解决评审意见的 PR', 8, '#ddd6fe', '#f5f3ff', '#ede9fe', '#5b21b6', '#4c1d95'),
+)
+
+PR_GROUPS = tuple((k, t, lim) for k, t, lim, *_ in PR_DIFF_GROUPS) + tuple(
+    (k, t, lim) for k, t, lim, *_ in PR_RISK_GROUPS
 )
 
 
@@ -482,8 +500,39 @@ def _pr_overview_lines(ctx):
     return lines
 
 
+def _pr_state_label(pr):
+    return {'open': '待处理', 'merged': '已合并', 'closed': '未合并关闭'}.get(pr.get('state'), '未知')
+
+
+def _pr_state_tone(pr):
+    return {'open': 'blue', 'merged': 'green', 'closed': 'slate'}.get(pr.get('state'), 'slate')
+
+
+def _pr_ci_badge_info(ci_status):
+    ci = _clean_text(ci_status, 'unknown')
+    mapping = {
+        'passed': (f'CI: {ci}', 'green'),
+        'failed': (f'CI: {ci}', 'red'),
+        'running': (f'CI: {ci}', 'blue'),
+        'not_executed': (f'CI: {ci}', 'slate'),
+    }
+    return mapping.get(ci, (f'CI: {ci}', 'amber'))
+
+
+def _pr_block_reasons(pr):
+    reasons = []
+    if pr.get('draft'):
+        reasons.append(('草稿 WIP', 'amber'))
+    if pr.get('mergeable') is False:
+        reasons.append(('存在冲突', 'red'))
+    ci = _clean_text(pr.get('ci_status'), 'unknown')
+    if ci != 'passed':
+        reasons.append(_pr_ci_badge_info(ci))
+    return reasons
+
+
 def _pr_item_text(pr, ctx):
-    state = {'open': '待处理', 'merged': '已合并', 'closed': '未合并关闭'}.get(pr.get('state'), '未知')
+    state = _pr_state_label(pr)
     author = _clean_text((pr.get('author') or {}).get('login'))
     text = (f'{pr["id"]} [{state}] {_clean_text(pr.get("title"))} | 提交人：{author} | '
             f'指派：{_format_assignees(pr)} | CI：{_clean_text(pr.get("ci_status"))}')
@@ -497,61 +546,339 @@ def _render_pr_text(ctx):
     if not ctx['available']:
         return lines + ['尚未采集 PR 数据。']
     lines.extend(_pr_overview_lines(ctx))
-    lines.append('PR 分仓统计：')
+    lines += ['', 'PR 分仓多维统计：']
     for repo, st in ctx['repos']:
         lines.append(f'- {repo}：共 {st["total"]} / 待处理 {st["open"]} / 已合并 {st["merged"]} / '
-                     f'未合并关闭 {st["closed"]} / 闭环率 {st["closure_rate"]} / '
-                     f'首响达标 {st["response_rate"]} / 待合并 {st["ready"]} / '
+                     f'未合并关闭 {st["closed"]} | 闭环率 {st["closure_rate"]} | '
+                     f'首响达标 {st["response_rate"]} | 待合并 {st["ready"]} / '
                      f'合并受阻 {st["blocked"]} / 首响超时 {st["timeout"]}')
-    for key, title, limit in PR_GROUPS:
-        items = ctx['groups'][key]
-        if not items:
-            continue
-        lines.append(f'{title}（共 {len(items)} 项，展示前 {min(limit, len(items))} 项）：')
-        for pr in items[:limit]:
-            lines.extend([f'- {_pr_item_text(pr, ctx)}', f'  {pr["url"]}'])
-        if len(items) > limit:
-            lines.append(f'  …另有 {len(items) - limit} 项，详见 PR详情。')
+
+    has_diff = any(ctx['groups'][key] for key, *_ in PR_DIFF_GROUPS)
+    if has_diff:
+        lines += ['', 'PR 本次扫描变更明细：']
+        for key, title, limit, *_ in PR_DIFF_GROUPS:
+            items = ctx['groups'][key]
+            if not items:
+                continue
+            lines.append(f'{title}（共 {len(items)} 项，展示前 {min(limit, len(items))} 项）：')
+            for pr in items[:limit]:
+                state = _pr_state_label(pr)
+                author = _clean_text((pr.get('author') or {}).get('login'))
+                assignees = _format_assignees(pr)
+                ci_str = _clean_text(pr.get('ci_status'))
+                extra = ''
+                if ctx['details'][pr['id']]['timeout']:
+                    extra = f' | CI 起已等待 {ctx["details"][pr["id"]]["elapsed"]:.1f} 工作日小时未首响'
+                lines.extend([
+                    f'- {pr["id"]} [{state}] {_clean_text(pr.get("title"))}',
+                    f'  提交人：{author} | 指派：{assignees} | CI：{ci_str}{extra}',
+                    f'  {pr["url"]}',
+                ])
+            if len(items) > limit:
+                lines.append(f'  …另有 {len(items) - limit} 项，详见 PR详情。')
+
+    has_risk = any(ctx['groups'][key] for key, *_ in PR_RISK_GROUPS)
+    if has_risk:
+        lines += ['', 'PR 重点风险与待办清单：']
+        for idx, (key, title, limit, *_) in enumerate(PR_RISK_GROUPS, 1):
+            items = ctx['groups'][key]
+            if not items:
+                continue
+            lines.append(f'{idx}) {title}（共 {len(items)} 项，展示前 {min(limit, len(items))} 项）：')
+            for pr in items[:limit]:
+                lines.extend([f'   - {_pr_item_text(pr, ctx)}', f'     {pr["url"]}'])
+            if len(items) > limit:
+                lines.append(f'     …另有 {len(items) - limit} 项，详见 PR详情。')
     return lines
 
 
 def _render_pr_html(ctx):
-    blocks = [
-        '<div style="margin-top:24px;">'
+    header_html = (
+        '<div style="margin-top:28px;padding-top:20px;border-top:2px solid #e2e8f0;">'
         '<div style="margin-bottom:10px;font-size:15px;font-weight:700;color:#0f172a;'
-        'border-left:4px solid #2563eb;padding-left:10px;">六、PR 通报</div>'
-    ]
+        'border-left:4px solid #2563eb;padding-left:10px;">'
+        '六、PR 通报'
+        f'<span style="float:right;font-size:12px;font-weight:600;">'
+        f'<a href="{DASHBOARD_URL}#/pr-dashboard" style="color:#2563eb;text-decoration:none;">PR数据总览 ↗</a>'
+        f'<span style="color:#cbd5e1;margin:0 6px;">·</span>'
+        f'<a href="{DASHBOARD_URL}#/prs" style="color:#2563eb;text-decoration:none;">PR详情 ↗</a>'
+        f'</span></div>'
+    )
     if not ctx['available']:
-        return ''.join(blocks) + '<p>尚未采集 PR 数据。</p></div>'
-    blocks.extend(f'<p style="margin:6px 0;font-size:12px;">{html.escape(line)}</p>' for line in _pr_overview_lines(ctx))
-    columns = (('仓库', None), ('总数', 'total'), ('待处理', 'open'), ('已合并', 'merged'),
-               ('未合并关闭', 'closed'), ('闭环率', 'closure_rate'), ('首响达标', 'response_rate'),
-               ('待合并', 'ready'), ('受阻', 'blocked'), ('首响超时', 'timeout'))
-    cell = 'padding:8px 6px;border-bottom:1px solid #e2e8f0;'
-    blocks.append('<table width="100%" cellpadding="0" cellspacing="0" '
-                  'style="border-collapse:collapse;font-size:12px;margin-top:12px;">'
-                  '<tr style="background:#f1f5f9;">' + ''.join(
-                      f'<th style="{cell}">{label}</th>' for label, _ in columns) + '</tr>')
-    for repo, st in ctx['repos']:
+        return (
+            header_html
+            + '<div style="margin-top:10px;padding:14px;background:#f8fafc;border:1px dashed #cbd5e1;'
+              'border-radius:8px;color:#64748b;font-size:13px;text-align:center;">尚未采集 PR 数据。</div></div>'
+        )
+
+    st = ctx['stats']
+    groups = ctx['groups']
+    blocks = [header_html]
+
+    # 基线与采集警告横幅（与 Issue 顶部横幅视觉风格严格一致）
+    if not ctx['has_baseline']:
+        blocks.append(
+            '<div style="margin:0 0 12px 0;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;'
+            'border-left:4px solid #2563eb;border-radius:8px;color:#1e40af;font-size:12px;">'
+            '首次采集 PR，无历史 PR 基线；新增列表为首次发现。</div>'
+        )
+    if ctx['warnings']:
+        warn_items = ''.join(f'<li style="margin:2px 0;">{html.escape(w)}</li>' for w in ctx['warnings'])
+        blocks.append(
+            '<div style="margin:0 0 12px 0;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;'
+            'border-left:4px solid #d97706;border-radius:8px;color:#92400e;font-size:12px;">'
+            '<strong>PR 采集提示：</strong>'
+            f'<ul style="margin:4px 0 0 18px;padding:0;">{warn_items}</ul></div>'
+        )
+
+    # 统计范围与 SLA 口径说明（与一、Issue SLA 口径说明一致）
+    blocks.append(
+        '<div style="margin-bottom:12px;font-size:12px;color:#64748b;line-height:1.6;">'
+        '<div>统计范围与 PR数据总览一致，包含当前已采集的内部与外部贡献者 PR。</div>'
+        '<div>SLA 口径：合并或关闭均计入闭环；非草稿、可合并且 CI 通过的 Open/Merged PR 纳入首响统计，'
+        '从 CI 通过时间（缺失时从创建时间）起算，排除周末及中国大陆法定节假日、包含调休补班日。</div>'
+        '</div>'
+    )
+
+    # 4 列 PR SLA 核心指标卡片（与一、Issue 4 列 SLA 卡片严格对称）
+    pr_closure_tone = _rate_tone(st['closure_rate_val'], 90)
+    pr_resp_tone = _rate_tone(st['response_rate_val'], 80)
+    pr_ready_tone = 'green' if st['ready'] > 0 else 'slate'
+    pr_timeout_tone = 'red' if st['timeout'] > 0 else 'green'
+
+    blocks.append(
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="border-collapse:separate;border-spacing:8px 0;margin:0 -8px 12px -8px;">'
+        '<tr>'
+        f'<td width="25%" valign="top" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">'
+        f'<div style="font-size:12px;color:#475569;font-weight:600;">PR 闭环率 {_badge_html(_rate_status_label(st["closure_rate_val"], 90), pr_closure_tone)}</div>'
+        f'<div style="margin:6px 0 4px 0;font-size:22px;font-weight:800;color:#0f172a;">{st["closure_rate"]}</div>'
+        f'<div style="font-size:11px;color:#64748b;">已合并 {st["merged"]} · 关闭 {st["closed"]}<br>总计 {st["total"]} 项 PR</div>'
+        f'</td>'
+        f'<td width="25%" valign="top" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">'
+        f'<div style="font-size:12px;color:#475569;font-weight:600;">24h 首响达标率 {_badge_html(_rate_status_label(st["response_rate_val"], 80), pr_resp_tone)}</div>'
+        f'<div style="margin:6px 0 4px 0;font-size:22px;font-weight:800;color:#0f172a;">{st["response_rate"]}</div>'
+        f'<div style="font-size:11px;color:#64748b;">达标 {st["qualified"]} / 有效样本 {st["eligible"]}<br>CI 通过起算 ≤24h 工作日</div>'
+        f'</td>'
+        f'<td width="25%" valign="top" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">'
+        f'<div style="font-size:12px;color:#475569;font-weight:600;">待合并 / 合并受阻 {_badge_html("Open 状态", pr_ready_tone)}</div>'
+        f'<div style="margin:6px 0 4px 0;font-size:22px;font-weight:800;color:#15803d;">{st["ready"]} <span style="font-size:14px;font-weight:600;color:#d97706;">/ 受阻 {st["blocked"]}</span></div>'
+        f'<div style="font-size:11px;color:#64748b;">就绪可合入 vs 草稿/冲突/CI未过<br><a href="{DASHBOARD_URL}#/prs" style="color:#2563eb;text-decoration:none;">查看 PR 队列 ↗</a></div>'
+        f'</td>'
+        f'<td width="25%" valign="top" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">'
+        f'<div style="font-size:12px;color:#475569;font-weight:600;">首响超时 / 未首响 {_badge_html("Open 待响应", pr_timeout_tone)}</div>'
+        f'<div style="margin:6px 0 4px 0;font-size:22px;font-weight:800;color:{"#dc2626" if st["timeout"] > 0 else "#15803d"};">{st["timeout"]} <span style="font-size:14px;font-weight:600;color:#64748b;">/ {st["unreplied"]}</span></div>'
+        f'<div style="font-size:11px;color:#64748b;">CI 通过后 &gt;24h 工作日未首响<br><a href="{DASHBOARD_URL}#/pr-dashboard" style="color:#2563eb;text-decoration:none;">查看 SLA 分析 ↗</a></div>'
+        f'</td>'
+        '</tr></table>'
+    )
+
+    # 全量分布与本次变更摘要条（保留标准文案格式且与 Issue 指标条一致）
+    blocks.append(
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-size:12px;color:#334155;">'
+        '<tr>'
+        f'<td style="padding-bottom:5px;white-space:nowrap;font-weight:600;">PR 全量：共 {st["total"]} / 待处理 {st["open"]} / 已合并 {st["merged"]} / 未合并关闭 {st["closed"]}</td>'
+        f'<td align="right" style="padding-bottom:5px;white-space:nowrap;">PR 闭环率：{st["closure_rate"]} | 24h 首响达标率：{st["response_rate"]}（达标 {st["qualified"]} / 有效样本 {st["eligible"]}）</td>'
+        '</tr>'
+        '<tr>'
+        f'<td style="border-top:1px dashed #cbd5e1;padding-top:6px;white-space:nowrap;">PR 待关注：待合并 {st["ready"]} / 合并受阻 {st["blocked"]} / 未首响 {st["unreplied"]} / 首响超时 {st["timeout"]}</td>'
+        f'<td align="right" style="border-top:1px dashed #cbd5e1;padding-top:6px;white-space:nowrap;">本次 PR：新增 {len(groups["new"])} / 更新 {ctx["changed"]} / 新合并 {len(groups["merged"])} / 新关闭 {len(groups["closed"])} / 新评论 {ctx["comments"]}</td>'
+        '</tr>'
+        '</table>'
+    )
+
+    # 1. PR 分仓多维统计明细表（带斑马纹、徽章与全量合计行，与二、Issue 分仓表一致）
+    pr_repo_trs = []
+    for idx, (repo, r_st) in enumerate(ctx['repos']):
+        bg = '#ffffff' if idx % 2 == 0 else '#f8fafc'
         url = html.escape(f'{DASHBOARD_URL}#/prs?repo={quote(repo, safe="")}')
-        blocks.append(f'<tr><td style="{cell}"><a href="{url}">{html.escape(repo)}</a></td>'
-                      + ''.join(f'<td style="{cell}text-align:center;">{st[key]}</td>' for _, key in columns[1:])
-                      + '</tr>')
-    blocks.append('</table>')
-    for key, title, limit in PR_GROUPS:
-        items = ctx['groups'][key]
+        c_badge = _badge_html(r_st['closure_rate'], _rate_tone(r_st['closure_rate_val'], 90))
+        f_badge = _badge_html(r_st['response_rate'], _rate_tone(r_st['response_rate_val'], 80))
+        ready_cell = f'<strong style="color:#15803d;">{r_st["ready"]}</strong>' if r_st['ready'] > 0 else '0'
+        blocked_cell = f'<strong style="color:#d97706;">{r_st["blocked"]}</strong>' if r_st['blocked'] > 0 else '0'
+        timeout_cell = f'<strong style="color:#dc2626;">{r_st["timeout"]}</strong>' if r_st['timeout'] > 0 else '0'
+        pr_repo_trs.append(
+            f'<tr style="background:{bg};">'
+            f'<td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;">'
+            f'<a href="{url}" style="color:#2563eb;text-decoration:none;">{html.escape(repo)}</a></td>'
+            f'<td style="padding:10px 10px;border-bottom:1px solid #e2e8f0;text-align:right;color:#334155;">{r_st["total"]}</td>'
+            f'<td style="padding:10px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;color:#1d4ed8;">{r_st["open"]}</td>'
+            f'<td style="padding:10px 10px;border-bottom:1px solid #e2e8f0;text-align:right;color:#15803d;">{r_st["merged"]}</td>'
+            f'<td style="padding:10px 10px;border-bottom:1px solid #e2e8f0;text-align:right;color:#64748b;">{r_st["closed"]}</td>'
+            f'<td style="padding:10px 10px;border-bottom:1px solid #e2e8f0;text-align:right;">{c_badge}</td>'
+            f'<td style="padding:10px 10px;border-bottom:1px solid #e2e8f0;text-align:right;">{f_badge}</td>'
+            f'<td style="padding:10px 10px;border-bottom:1px solid #e2e8f0;text-align:right;">{ready_cell}</td>'
+            f'<td style="padding:10px 10px;border-bottom:1px solid #e2e8f0;text-align:right;">{blocked_cell}</td>'
+            f'<td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">{timeout_cell}</td>'
+            f'</tr>'
+        )
+    pr_repo_trs.append(
+        '<tr style="background:#f1f5f9;font-weight:700;">'
+        '<td style="padding:10px 12px;border-top:2px solid #cbd5e1;color:#0f172a;">全量合计</td>'
+        f'<td style="padding:10px 10px;border-top:2px solid #cbd5e1;text-align:right;color:#0f172a;">{st["total"]}</td>'
+        f'<td style="padding:10px 10px;border-top:2px solid #cbd5e1;text-align:right;color:#1d4ed8;">{st["open"]}</td>'
+        f'<td style="padding:10px 10px;border-top:2px solid #cbd5e1;text-align:right;color:#15803d;">{st["merged"]}</td>'
+        f'<td style="padding:10px 10px;border-top:2px solid #cbd5e1;text-align:right;color:#475569;">{st["closed"]}</td>'
+        f'<td style="padding:10px 10px;border-top:2px solid #cbd5e1;text-align:right;">{_badge_html(st["closure_rate"], pr_closure_tone)}</td>'
+        f'<td style="padding:10px 10px;border-top:2px solid #cbd5e1;text-align:right;">{_badge_html(st["response_rate"], pr_resp_tone)}</td>'
+        f'<td style="padding:10px 10px;border-top:2px solid #cbd5e1;text-align:right;color:#15803d;">{st["ready"]}</td>'
+        f'<td style="padding:10px 10px;border-top:2px solid #cbd5e1;text-align:right;color:#d97706;">{st["blocked"]}</td>'
+        f'<td style="padding:10px 12px;border-top:2px solid #cbd5e1;text-align:right;color:#dc2626;">{st["timeout"]}</td>'
+        '</tr>'
+    )
+    blocks.append(
+        '<div style="margin-top:16px;">'
+        '<div style="margin-bottom:8px;font-size:13px;font-weight:700;color:#334155;">PR 分仓多维统计明细</div>'
+        '<table width="100%" cellpadding="0" cellspacing="0" '
+        'style="border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">'
+        '<tr style="background:#f1f5f9;color:#334155;text-align:left;white-space:nowrap;">'
+        '<th style="padding:9px 12px;border-bottom:1px solid #cbd5e1;">仓库</th>'
+        '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">总数</th>'
+        '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">待处理</th>'
+        '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">已合并</th>'
+        '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">未合并关闭</th>'
+        '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">闭环率</th>'
+        '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">24h 首响达标</th>'
+        '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">待合并</th>'
+        '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">受阻</th>'
+        '<th style="padding:9px 12px;border-bottom:1px solid #cbd5e1;text-align:right;">首响超时</th>'
+        '</tr>'
+        f'{"".join(pr_repo_trs)}</table></div>'
+    )
+
+    # 2. 本次 PR 扫描变更明细（卡片式分组，与三、Issue 扫描变更明细一致）
+    pr_diff_cards = []
+    for key, title, limit, badge_tone, hdr_bg, hdr_border, hdr_fg in PR_DIFF_GROUPS:
+        items = groups[key]
         if not items:
             continue
-        blocks.append(f'<p style="margin:16px 0 6px;font-size:13px;font-weight:700;">'
-                      f'{html.escape(title)}（共 {len(items)} 项，展示前 {min(limit, len(items))} 项）</p>')
+        item_rows = []
         for pr in items[:limit]:
-            blocks.append(f'<p style="margin:6px 0;font-size:12px;">'
-                          f'<a href="{html.escape(pr["url"], quote=True)}" style="color:#2563eb;text-decoration:none;">'
-                          f'{html.escape(_pr_item_text(pr, ctx))}</a></p>')
+            pr_url = html.escape(pr.get('url', ''), quote=True)
+            pr_title = html.escape(_clean_text(pr.get('title')))
+            state_badge = _badge_html(_pr_state_label(pr), _pr_state_tone(pr))
+            ci_label, ci_tone = _pr_ci_badge_info(pr.get('ci_status'))
+            ci_badge = _badge_html(ci_label, ci_tone)
+            author = html.escape(_clean_text((pr.get('author') or {}).get('login')))
+            assignee_str = html.escape(_format_assignees(pr))
+            created = html.escape(fmt_bjt(pr.get('created_at')))
+            extra_meta = ''
+            if ctx['details'][pr['id']]['timeout']:
+                extra_meta = (
+                    f' · <span style="color:#dc2626;font-weight:600;">'
+                    f'CI 起已等待 {ctx["details"][pr["id"]]["elapsed"]:.1f} 工作日小时未首响</span>'
+                )
+            item_rows.append(
+                '<div style="padding:10px 12px;border-bottom:1px solid #f1f5f9;">'
+                f'<div style="font-size:13px;font-weight:600;color:#0f172a;">'
+                f'<a href="{pr_url}" style="color:#2563eb;text-decoration:none;">{html.escape(pr["id"])}</a> '
+                f'{state_badge} {ci_badge} {pr_title}</div>'
+                f'<div style="margin-top:4px;font-size:12px;color:#64748b;">'
+                f'创建：{created}（北京时间） · 提交人：<strong>{author}</strong> · 指派：{assignee_str}{extra_meta}'
+                f'</div></div>'
+            )
         if len(items) > limit:
-            blocks.append(f'<p style="font-size:12px;">…另有 {len(items) - limit} 项，详见 PR详情。</p>')
-    blocks.append(f'<p style="font-size:12px;"><a href="{DASHBOARD_URL}#/pr-dashboard">PR数据总览 ↗</a>'
-                  f' · <a href="{DASHBOARD_URL}#/prs">PR详情 ↗</a></p></div>')
+            item_rows.append(
+                f'<div style="padding:8px 12px;background:#f8fafc;font-size:12px;color:#64748b;">'
+                f'…另有 {len(items) - limit} 项，详见 <a href="{DASHBOARD_URL}#/prs" style="color:#2563eb;text-decoration:none;">PR详情 ↗</a>。</div>'
+            )
+        pr_diff_cards.append(
+            '<div style="margin-top:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">'
+            f'<div style="padding:8px 12px;background:{hdr_bg};border-bottom:1px solid {hdr_border};'
+            f'font-size:13px;font-weight:700;color:{hdr_fg};">'
+            f'{html.escape(title)}（共 {len(items)} 项，展示前 {min(limit, len(items))} 项）</div>'
+            f'{"".join(item_rows)}</div>'
+        )
+    if pr_diff_cards:
+        blocks.append(
+            '<div style="margin-top:18px;">'
+            '<div style="margin-bottom:4px;font-size:13px;font-weight:700;color:#334155;">本次 PR 扫描变更明细</div>'
+            f'{"".join(pr_diff_cards)}</div>'
+        )
+    else:
+        blocks.append(
+            '<div style="margin-top:14px;padding:12px;background:#f8fafc;border:1px dashed #cbd5e1;'
+            'border-radius:8px;color:#64748b;font-size:12px;text-align:center;">'
+            '本次扫描周期内无新增 PR、新合并、新关闭或新增评论。</div>'
+        )
+
+    # 3. PR 重点风险与待办清单（结构化表格卡片，与四、Issue 重点风险待办清单一致）
+    pr_risk_cards = []
+    for idx, (key, title, limit, card_border, hdr_bg, th_bg, hdr_fg, th_fg) in enumerate(PR_RISK_GROUPS, 1):
+        items = groups[key]
+        if not items:
+            continue
+        rows_html = []
+        for pr in items[:limit]:
+            pr_url = html.escape(pr.get('url', ''), quote=True)
+            pr_title = html.escape(_clean_text(pr.get('title')))
+            author = html.escape(_clean_text((pr.get('author') or {}).get('login')))
+            assignee_str = html.escape(_format_assignees(pr))
+            ci_label, ci_tone = _pr_ci_badge_info(pr.get('ci_status'))
+            status_parts = [_badge_html(ci_label, ci_tone)]
+            if key == 'timeout':
+                elapsed_h = ctx['details'][pr['id']]['elapsed']
+                status_parts.append(
+                    f'<span style="color:#dc2626;font-weight:600;font-size:11px;margin-left:4px;">'
+                    f'等待 {elapsed_h:.1f}h 工作日</span>'
+                )
+            elif key == 'ready':
+                status_parts.append(_badge_html('可合并', 'green'))
+                if ctx['details'][pr['id']]['timeout']:
+                    elapsed_h = ctx['details'][pr['id']]['elapsed']
+                    status_parts.append(
+                        f'<span style="color:#d97706;font-size:11px;margin-left:2px;">未首响 {elapsed_h:.1f}h</span>'
+                    )
+            elif key == 'blocked':
+                for reason_text, reason_tone in _pr_block_reasons(pr):
+                    if not reason_text.startswith('CI:'):
+                        status_parts.append(_badge_html(reason_text, reason_tone))
+            elif key == 'review':
+                unres_cnt = _unresolved_review_count(pr)
+                if unres_cnt > 0:
+                    status_parts.append(_badge_html(f'未解决评审 {unres_cnt}', 'purple'))
+            rows_html.append(
+                '<tr>'
+                f'<td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">'
+                f'<a href="{pr_url}" style="color:#2563eb;font-weight:600;text-decoration:none;">{html.escape(pr["id"])}</a></td>'
+                f'<td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;color:#0f172a;">{pr_title}</td>'
+                f'<td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">{" ".join(status_parts)}</td>'
+                f'<td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;color:#475569;font-size:11px;white-space:nowrap;">'
+                f'提交人：<strong style="color:#0f172a;">{author}</strong> · 指派：{assignee_str}</td>'
+                '</tr>'
+            )
+        more_row = ''
+        if len(items) > limit:
+            more_row = (
+                f'<tr><td colspan="4" style="padding:8px 12px;background:#f8fafc;color:#64748b;font-size:12px;">'
+                f'…另有 {len(items) - limit} 项，详见 <a href="{DASHBOARD_URL}#/prs" style="color:#2563eb;text-decoration:none;font-weight:600;">PR详情 ↗</a>。'
+                f'</td></tr>'
+            )
+        pr_risk_cards.append(
+            f'<div style="margin-top:12px;border:1px solid {card_border};border-radius:8px;overflow:hidden;">'
+            f'<div style="padding:8px 12px;background:{hdr_bg};border-bottom:1px solid {card_border};'
+            f'font-size:13px;font-weight:700;color:{hdr_fg};">'
+            f'{idx}. {html.escape(title)}（共 {len(items)} 项，展示前 {min(limit, len(items))} 项）'
+            f'<a href="{DASHBOARD_URL}#/prs" style="float:right;color:{hdr_fg};text-decoration:none;font-weight:600;font-size:12px;">查看全部 ↗</a>'
+            f'</div>'
+            '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;">'
+            f'<tr style="background:{th_bg};color:{th_fg};text-align:left;white-space:nowrap;">'
+            '<th style="padding:6px 10px;">PR</th>'
+            '<th style="padding:6px 10px;">标题</th>'
+            '<th style="padding:6px 10px;">CI 与状态</th>'
+            '<th style="padding:6px 10px;">提交人 / 指派</th>'
+            '</tr>'
+            f'{"".join(rows_html)}{more_row}</table></div>'
+        )
+    if pr_risk_cards:
+        blocks.append(
+            '<div style="margin-top:18px;">'
+            '<div style="margin-bottom:4px;font-size:13px;font-weight:700;color:#334155;">PR 重点风险与待办清单</div>'
+            f'{"".join(pr_risk_cards)}</div>'
+        )
+
+    blocks.append('</div>')
     return ''.join(blocks)
 
 
@@ -1227,7 +1554,7 @@ def render_html(previous, current, outcome='success'):
             f'<a href="{DASHBOARD_URL}#/issues?state=open&amp;internal=missing" style="float:right;color:#b45309;text-decoration:none;font-weight:600;">查看全部 ↗</a>'
             '</div>'
             '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;">'
-            '<tr style="background:#fefce8;color:#713f12;text-align:left;">'
+            '<tr style="background:#fefce8;color:#713f12;text-align:left;white-space:nowrap;">'
             '<th style="padding:6px 10px;">Issue</th><th style="padding:6px 10px;">标题</th>'
             '<th style="padding:6px 10px;">已开启</th><th style="padding:6px 10px;">当前指派</th></tr>'
             f'{"".join(rows_html)}</table></div>'
@@ -1256,7 +1583,7 @@ def render_html(previous, current, outcome='success'):
             f'<a href="{DASHBOARD_URL}#/issues?state=open&amp;risk=soon" style="float:right;color:#c2410c;text-decoration:none;font-weight:600;">查看全部 ↗</a>'
             '</div>'
             '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;">'
-            '<tr style="background:#ffedd5;color:#7c2d12;text-align:left;">'
+            '<tr style="background:#ffedd5;color:#7c2d12;text-align:left;white-space:nowrap;">'
             '<th style="padding:6px 10px;">Issue</th><th style="padding:6px 10px;">标题</th>'
             '<th style="padding:6px 10px;">距 14 天超期</th><th style="padding:6px 10px;">责任人</th></tr>'
             f'{"".join(rows_html)}</table></div>'
@@ -1284,7 +1611,7 @@ def render_html(previous, current, outcome='success'):
             f'<a href="{DASHBOARD_URL}#/issues?state=open&amp;first_resp=open_soon" style="float:right;color:#b45309;text-decoration:none;font-weight:600;">查看全部 ↗</a>'
             '</div>'
             '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;">'
-            '<tr style="background:#fefce8;color:#713f12;text-align:left;">'
+            '<tr style="background:#fefce8;color:#713f12;text-align:left;white-space:nowrap;">'
             '<th style="padding:6px 10px;">Issue</th><th style="padding:6px 10px;">标题</th>'
             '<th style="padding:6px 10px;">距 24h 首响超时</th><th style="padding:6px 10px;">责任人</th></tr>'
             f'{"".join(rows_html)}</table></div>'
@@ -1312,7 +1639,7 @@ def render_html(previous, current, outcome='success'):
             f'<a href="{DASHBOARD_URL}#/issues?state=open&amp;first_resp=open_timeout" style="float:right;color:#b91c1c;text-decoration:none;font-weight:600;">查看全部 ↗</a>'
             '</div>'
             '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;">'
-            '<tr style="background:#fee2e2;color:#7f1d1d;text-align:left;">'
+            '<tr style="background:#fee2e2;color:#7f1d1d;text-align:left;white-space:nowrap;">'
             '<th style="padding:6px 10px;">Issue</th><th style="padding:6px 10px;">标题</th>'
             '<th style="padding:6px 10px;">未首响停留</th><th style="padding:6px 10px;">责任人</th></tr>'
             f'{"".join(rows_html)}</table></div>'
@@ -1354,7 +1681,7 @@ def render_html(previous, current, outcome='success'):
             f'<a href="{DASHBOARD_URL}#/members" style="float:right;font-size:12px;font-weight:600;color:#2563eb;text-decoration:none;">内部维护人总表 ↗</a>'
             '</div>'
             '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">'
-            '<tr style="background:#f1f5f9;color:#334155;text-align:left;font-size:12px;">'
+            '<tr style="background:#f1f5f9;color:#334155;text-align:left;font-size:12px;white-space:nowrap;">'
             '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;">排名</th>'
             '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;">内部维护人</th>'
             '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;">仓库分布</th>'
@@ -1377,6 +1704,22 @@ def render_html(previous, current, outcome='success'):
             f'{"".join(risk_sections_html)}</div>'
         )
 
+    pr_rep = ctx['pr_report']
+    pr_banner_summary = ''
+    pr_nav_risk_link = ''
+    if pr_rep['available']:
+        pr_st = pr_rep['stats']
+        pr_grps = pr_rep['groups']
+        pr_banner_summary = (
+            f' · PR 待处理 <strong>{pr_st["open"]}</strong>'
+            f'（新增 <strong>{len(pr_grps["new"])}</strong> / 新合并 <strong>{len(pr_grps["merged"])}</strong>'
+            f' / 首响超时 <strong>{pr_st["timeout"]}</strong>）'
+        )
+        pr_nav_risk_link = (
+            f' <a href="{DASHBOARD_URL}#/prs" style="color:#dc2626;text-decoration:none;'
+            f'font-weight:600;margin-left:12px;">PR 首响超时 ({pr_st["timeout"]})</a>'
+        )
+
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1392,9 +1735,9 @@ def render_html(previous, current, outcome='success'):
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
           <tr>
             <td>
-              <div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#93c5fd;font-weight:700;">CANN ISSUE OBSERVATORY · 闭环监控巡检报告</div>
+              <div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#93c5fd;font-weight:700;">CANN ISSUE &amp; PR OBSERVATORY · 闭环监控巡检报告</div>
               <div style="margin-top:4px;font-size:20px;font-weight:800;color:#ffffff;">四仓 Issue / PR 态势与 SLA 巡检汇总</div>
-              <div style="margin-top:4px;font-size:12px;color:#cbd5e1;">快照时间：{html.escape(ctx["at"])}（北京时间 UTC+8） · 本次新增 <strong>{len(ctx["new_issues"])}</strong> / 更新 <strong>{ctx["changed"]}</strong> / 新评论 <strong>{ctx["new_comments_total"]}</strong> / 新 AI 报告 <strong>{ctx["new_reports_total"]}</strong></div>
+              <div style="margin-top:4px;font-size:12px;color:#cbd5e1;">快照时间：{html.escape(ctx["at"])}（北京时间 UTC+8） · 本次新增 <strong>{len(ctx["new_issues"])}</strong> / 更新 <strong>{ctx["changed"]}</strong> / 新评论 <strong>{ctx["new_comments_total"]}</strong> / 新 AI 报告 <strong>{ctx["new_reports_total"]}</strong>{pr_banner_summary}</div>
             </td>
             <td align="right" valign="top" style="white-space:nowrap;">
               <a href="{DASHBOARD_URL}" style="display:inline-block;padding:8px 14px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;font-size:12px;font-weight:600;">打开监控看板 ↗</a>
@@ -1415,7 +1758,7 @@ def render_html(previous, current, outcome='success'):
         <a href="{DASHBOARD_URL}#/members" style="color:#2563eb;text-decoration:none;margin-right:12px;">内部维护人总表</a>
         <a href="{DASHBOARD_URL}#/duty" style="color:#2563eb;text-decoration:none;margin-right:12px;">责任田查询</a>
         <a href="{DASHBOARD_URL}#/issues?state=open&amp;internal=missing" style="color:#d97706;text-decoration:none;font-weight:600;margin-right:12px;">未分配内部维护人 ({counts["no_internal_assignee"]})</a>
-        <a href="{DASHBOARD_URL}#/issues?state=open&amp;risk=overdue" style="color:#dc2626;text-decoration:none;font-weight:600;">已超期 ({counts["overdue"]})</a>
+        <a href="{DASHBOARD_URL}#/issues?state=open&amp;risk=overdue" style="color:#dc2626;text-decoration:none;font-weight:600;">已超期 ({counts["overdue"]})</a>{pr_nav_risk_link}
       </td>
     </tr>
 
@@ -1461,8 +1804,8 @@ def render_html(previous, current, outcome='success'):
         <!-- 待关注风险指标条 -->
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-size:12px;">
           <tr>
-            <td><strong>全量分布：</strong>共 <strong>{len(ctx["rows"])}</strong> · 待处理 <strong style="color:#1d4ed8;">{counts["open"]}</strong> · 已关闭 <strong style="color:#15803d;">{counts["closed"]}</strong> · 含 AI 报告 <strong style="color:#6d28d9;">{counts["has_report"]}</strong></td>
-            <td align="right">
+            <td style="white-space:nowrap;"><strong>全量分布：</strong>共 <strong>{len(ctx["rows"])}</strong> · 待处理 <strong style="color:#1d4ed8;">{counts["open"]}</strong> · 已关闭 <strong style="color:#15803d;">{counts["closed"]}</strong> · 含 AI 报告 <strong style="color:#6d28d9;">{counts["has_report"]}</strong></td>
+            <td align="right" style="white-space:nowrap;">
               <strong>风险预警：</strong>
               已超期 <strong style="color:#dc2626;">{counts["overdue"]}</strong> ·
               即将超期 <strong style="color:#d97706;">{counts["due_soon"]}</strong> ·
@@ -1479,7 +1822,7 @@ def render_html(previous, current, outcome='success'):
             二、分仓多维统计明细
           </div>
           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-            <tr style="background:#f1f5f9;color:#334155;text-align:left;">
+            <tr style="background:#f1f5f9;color:#334155;text-align:left;white-space:nowrap;">
               <th style="padding:9px 12px;border-bottom:1px solid #cbd5e1;">仓库</th>
               <th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">总数</th>
               <th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">待处理</th>

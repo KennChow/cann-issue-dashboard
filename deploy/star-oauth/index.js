@@ -6,7 +6,7 @@
 //   GITCODE_CLIENT_SECRET  OAuth 应用 Client Secret
 //   REDIRECT_URI           https://kennchow.github.io/cann-issue-dashboard/star.html
 //
-// 逻辑与 ../handler.js（Vercel 版）一致。
+// 部署：阿里云函数计算 cn-hangzhou / cann-star-oauth，HTTP 触发器认证方式为"无需认证"（来源校验由本代码完成）。
 
 const http = require("http");
 

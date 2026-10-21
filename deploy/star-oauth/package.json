@@ -1,5 +1,5 @@
 {
-  "name": "cann-star-oauth",
+  "name": "cann-star-oauth-fc",
   "private": true,
-  "type": "module"
+  "type": "commonjs"
 }

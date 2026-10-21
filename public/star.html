@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="referrer" content="no-referrer" />
-    <title>一键 Star · CANN GE 相关仓库</title>
+    <title>一键Star CANN相关仓库</title>
     <style>
       :root {
         color-scheme: dark;
@@ -68,7 +68,7 @@
   </head>
   <body>
     <main>
-      <h1>⭐ 一键 Star</h1>
+      <h1>⭐ 一键Star CANN相关仓库</h1>
       <p class="sub">登录 GitCode 并授权后，自动为以下 4 个仓库点 Star，感谢支持！</p>
 
       <ul class="repos" id="repos"></ul>
@@ -85,7 +85,7 @@
       // ===== 配置 =====
       // GitCode OAuth 应用的 Client ID（公开信息，可以写在页面里）。
       const CLIENT_ID = "19f181949c0e4e6595af26590bd4ce2d";
-      // 换取 access_token 的后端地址（阿里云函数计算 cn-hangzhou/cann-star-oauth，持有 client_secret，源码见 deploy/star-oauth/aliyun-fc/index.js；Vercel 版在国内网络不可达，仅作备用）。
+      // 换取 access_token 的后端地址（阿里云函数计算 cn-hangzhou/cann-star-oauth，持有 client_secret，源码见 deploy/star-oauth/index.js）。
       const TOKEN_ENDPOINT = "https://cann-star-oauth-wdvxfiqvlv.cn-hangzhou.fcapp.run";
       // GitCode OAuth 权限范围；留空则使用应用默认权限。
       const SCOPE = "";

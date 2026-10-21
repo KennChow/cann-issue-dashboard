@@ -11,6 +11,16 @@
 const TOKEN_URL = "https://gitcode.com/oauth/token";
 
 export async function handle(request, env) {
+  // 仅记录排障所需信息，不记录 code / token / secret。
+  console.log(
+    JSON.stringify({
+      event: "request",
+      method: request.method,
+      origin: request.headers.get("Origin"),
+      ua: (request.headers.get("User-Agent") || "").slice(0, 120),
+      country: request.headers.get("x-vercel-ip-country"),
+    }),
+  );
   const allowedOrigin = new URL(env.REDIRECT_URI).origin;
   const cors = {
     "Access-Control-Allow-Origin": allowedOrigin,
@@ -51,6 +61,7 @@ export async function handle(request, env) {
     headers: { Accept: "application/json" },
   });
   const data = await upstream.json().catch(() => ({}));
+  console.log(JSON.stringify({ event: "token_exchange", status: upstream.status, ok: Boolean(data.access_token), error: data.error_message }));
   if (!upstream.ok || !data.access_token) {
     // GitCode 失败响应格式：{"error_code":400,"error_code_name":"BAD_REQUEST","error_message":"授权码错误"}
     return reply(502, {

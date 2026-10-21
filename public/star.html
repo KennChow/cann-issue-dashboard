@@ -85,8 +85,8 @@
       // ===== 配置 =====
       // GitCode OAuth 应用的 Client ID（公开信息，可以写在页面里）。
       const CLIENT_ID = "19f181949c0e4e6595af26590bd4ce2d";
-      // 换取 access_token 的后端地址（Vercel 项目 cann-star-oauth，持有 client_secret，源码见 deploy/star-oauth/）。
-      const TOKEN_ENDPOINT = "https://cann-star-oauth.vercel.app/api/token";
+      // 换取 access_token 的后端地址（阿里云函数计算 cn-hangzhou/cann-star-oauth，持有 client_secret，源码见 deploy/star-oauth/aliyun-fc/index.js；Vercel 版在国内网络不可达，仅作备用）。
+      const TOKEN_ENDPOINT = "https://cann-star-oauth-wdvxfiqvlv.cn-hangzhou.fcapp.run";
       // GitCode OAuth 权限范围；留空则使用应用默认权限。
       const SCOPE = "";
       const REPOS = [
@@ -159,11 +159,24 @@
       }
 
       async function exchangeCode(code) {
-        const res = await fetch(TOKEN_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, redirect_uri: redirectUri }),
-        });
+        // 换令牌服务在部分网络下可能连不上，设置超时避免页面一直停在"正在完成授权"。
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15000);
+        let res;
+        try {
+          res = await fetch(TOKEN_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code, redirect_uri: redirectUri }),
+            signal: controller.signal,
+          });
+        } catch (e) {
+          throw new Error(
+            e.name === "AbortError" ? "连接授权服务超时（当前网络可能无法访问）" : "无法连接授权服务（当前网络可能无法访问）",
+          );
+        } finally {
+          clearTimeout(timer);
+        }
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.access_token) {
           throw new Error(data.error_message || "换取令牌失败 (HTTP " + res.status + ")");

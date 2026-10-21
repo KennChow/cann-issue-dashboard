@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="referrer" content="no-referrer" />
+    <title>一键 Star · CANN GE 相关仓库</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --card: #161b22;
+        --line: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #e3b341;
+        --ok: #3fb950;
+        --err: #f85149;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+        display: flex;
+        justify-content: center;
+        padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+      }
+      main { width: 100%; max-width: 480px; }
+      h1 { font-size: 22px; margin: 8px 0 4px; }
+      .sub { color: var(--muted); margin: 0 0 20px; }
+      .repos { list-style: none; padding: 0; margin: 0 0 20px; display: grid; gap: 10px; }
+      .repo {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .repo .name { flex: 1; min-width: 0; word-break: break-all; }
+      .repo .name a { color: var(--text); text-decoration: none; font-weight: 600; }
+      .repo .name small { display: block; color: var(--muted); font-weight: 400; }
+      .status { font-size: 13px; white-space: nowrap; color: var(--muted); }
+      .status.ok { color: var(--ok); }
+      .status.err { color: var(--err); }
+      button.primary {
+        width: 100%;
+        border: 0;
+        border-radius: 10px;
+        padding: 14px;
+        font-size: 17px;
+        font-weight: 700;
+        color: #1f1600;
+        background: var(--accent);
+        cursor: pointer;
+      }
+      button.primary:disabled { opacity: 0.55; cursor: default; }
+      .msg { margin-top: 14px; color: var(--muted); font-size: 14px; min-height: 1.6em; }
+      .msg.ok { color: var(--ok); }
+      .msg.err { color: var(--err); }
+      .hint { margin-top: 24px; color: var(--muted); font-size: 13px; }
+      .hint a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>⭐ 一键 Star</h1>
+      <p class="sub">登录 GitCode 并授权后，自动为以下 4 个仓库点 Star，感谢支持！</p>
+
+      <ul class="repos" id="repos"></ul>
+
+      <button class="primary" id="go" type="button">GitCode 登录授权并一键 Star</button>
+      <div class="msg" id="msg" role="status" aria-live="polite"></div>
+
+      <p class="hint">
+        授权只用于本次 Star 操作，页面不会保存你的令牌。若授权不可用，可点击上方仓库名进入仓库页手动 Star。
+      </p>
+    </main>
+
+    <script>
+      // ===== 配置 =====
+      // GitCode OAuth 应用的 Client ID（公开信息，可以写在页面里）。
+      const CLIENT_ID = "19f181949c0e4e6595af26590bd4ce2d";
+      // 换取 access_token 的后端地址（Vercel 项目 cann-star-oauth，持有 client_secret，源码见 deploy/star-oauth/）。
+      const TOKEN_ENDPOINT = "https://cann-star-oauth.vercel.app/api/token";
+      // GitCode OAuth 权限范围；留空则使用应用默认权限。
+      const SCOPE = "";
+      const REPOS = [
+        { path: "cann/ge", desc: "Graph Engine" },
+        { path: "cann/tensorflow", desc: "TensorFlow 适配" },
+        { path: "cann/metadef", desc: "元数据定义" },
+        { path: "cann/triton-inference-server-ge-backend", desc: "Triton GE Backend" },
+      ];
+      // ================
+
+      const AUTHORIZE_URL = "https://gitcode.com/oauth/authorize";
+      const API = "https://api.gitcode.com/api/v5";
+      const STATE_KEY = "cann-star-oauth-state";
+      const redirectUri = location.origin + location.pathname;
+
+      const $repos = document.getElementById("repos");
+      const $go = document.getElementById("go");
+      const $msg = document.getElementById("msg");
+      const statusEls = {};
+
+      for (const repo of REPOS) {
+        const li = document.createElement("li");
+        li.className = "repo";
+        const name = document.createElement("div");
+        name.className = "name";
+        const a = document.createElement("a");
+        a.href = "https://gitcode.com/" + repo.path;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = repo.path;
+        const small = document.createElement("small");
+        small.textContent = repo.desc;
+        name.append(a, small);
+        const status = document.createElement("span");
+        status.className = "status";
+        status.textContent = "待 Star";
+        li.append(name, status);
+        $repos.append(li);
+        statusEls[repo.path] = status;
+      }
+
+      function setMsg(text, kind) {
+        $msg.textContent = text;
+        $msg.className = "msg" + (kind ? " " + kind : "");
+      }
+
+      function setStatus(path, text, kind) {
+        const el = statusEls[path];
+        el.textContent = text;
+        el.className = "status" + (kind ? " " + kind : "");
+      }
+
+      function randomState() {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      }
+
+      function startAuth() {
+        const state = randomState();
+        sessionStorage.setItem(STATE_KEY, state);
+        const params = new URLSearchParams({
+          client_id: CLIENT_ID,
+          redirect_uri: redirectUri,
+          response_type: "code",
+          state,
+        });
+        if (SCOPE) params.set("scope", SCOPE);
+        location.href = AUTHORIZE_URL + "?" + params.toString();
+      }
+
+      async function exchangeCode(code) {
+        const res = await fetch(TOKEN_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, redirect_uri: redirectUri }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.access_token) {
+          throw new Error(data.error_message || "换取令牌失败 (HTTP " + res.status + ")");
+        }
+        return data.access_token;
+      }
+
+      async function starRepo(token, path) {
+        setStatus(path, "Star 中…");
+        try {
+          // GitCode/AtomGit 的 Star 接口：POST /repos/{owner}/{repo}/star（幂等，已 Star 的仓库重复调用仍保持已 Star），
+          // 成功返回 200 及 {"starred": true, "star_count": n, ...}。
+          // 注意：官方文档未收录该接口，GitHub/Gitee 风格的 PUT /user/starred/{owner}/{repo} 在 GitCode 上返回 404 Route Not Found。
+          const res = await fetch(API + "/repos/" + path + "/star", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + token },
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.starred === true) {
+            setStatus(path, "✓ 已 Star", "ok");
+            return true;
+          }
+          setStatus(path, "✗ 失败 " + res.status, "err");
+        } catch (e) {
+          setStatus(path, "✗ 网络错误", "err");
+        }
+        return false;
+      }
+
+      async function handleCallback(params) {
+        const code = params.get("code");
+        const state = params.get("state");
+        const expected = sessionStorage.getItem(STATE_KEY);
+        sessionStorage.removeItem(STATE_KEY);
+        // 清掉地址栏里的 code，避免刷新或分享时重复使用。
+        history.replaceState(null, "", redirectUri);
+
+        if (!state || state !== expected) {
+          setMsg("授权校验失败，请重新点击按钮授权。", "err");
+          return;
+        }
+        $go.disabled = true;
+        setMsg("正在完成授权…");
+        let token;
+        try {
+          token = await exchangeCode(code);
+        } catch (e) {
+          setMsg(e.message + "，请重试或手动 Star。", "err");
+          $go.disabled = false;
+          return;
+        }
+        setMsg("授权成功，正在 Star…");
+        const results = await Promise.all(REPOS.map((r) => starRepo(token, r.path)));
+        token = null;
+        const okCount = results.filter(Boolean).length;
+        if (okCount === REPOS.length) {
+          setMsg("🎉 全部完成，感谢你的 Star！", "ok");
+          $go.textContent = "已完成";
+        } else {
+          setMsg("已完成 " + okCount + "/" + REPOS.length + "，失败的仓库可点击名称手动 Star。", "err");
+          $go.disabled = false;
+          $go.textContent = "重新授权再试一次";
+        }
+      }
+
+      (function init() {
+        if (!CLIENT_ID || !TOKEN_ENDPOINT) {
+          $go.disabled = true;
+          $go.textContent = "一键 Star 暂未开放";
+          setMsg("请点击仓库名进入仓库页手动 Star。");
+          return;
+        }
+        $go.addEventListener("click", startAuth);
+        const params = new URLSearchParams(location.search);
+        if (params.get("error")) {
+          history.replaceState(null, "", redirectUri);
+          setMsg("你取消了授权或授权失败，可再试一次。", "err");
+        } else if (params.get("code")) {
+          handleCallback(params);
+        }
+      })();
+    </script>
+  </body>
+</html>

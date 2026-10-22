@@ -426,12 +426,18 @@ export function IssueList({
           </select>
         </div>
         <div className="table-wrap">
-          <table className="issues">
+          <table className="issues detail-table issue-detail-table">
+            <colgroup>
+              {[24, 14, 15, 15, 12, 9, 11].map((width, index) => (
+                <col key={index} style={{ width: `${width}%` }} />
+              ))}
+            </colgroup>
             <thead>
               <tr>
                 {[
                   "仓库 / 编号 / 标题",
                   "责任人与提出人",
+                  "关联PR",
                   "独立状态",
                   "创建 / 更新（北京）",
                   "处理时长 / 期限",
@@ -469,10 +475,6 @@ export function IssueList({
                     <a href={i.url} target="_blank" rel="noreferrer">
                       原始 Issue ↗
                     </a>
-                    <div className="related-links">
-                      <small className="muted">关联 PR</small>
-                      <RelatedPrs prs={relatedPrs.get(i.id) || []} />
-                    </div>
                   </td>
                   <td>
                     {i.assignees.map((a) => a.login).join(", ") || (
@@ -488,6 +490,9 @@ export function IssueList({
                         {i.author.login}
                       </button>
                     </small>
+                  </td>
+                  <td>
+                    <RelatedPrs prs={relatedPrs.get(i.id) || []} />
                   </td>
                   <td>
                     <Badges i={i} />

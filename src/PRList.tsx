@@ -567,14 +567,19 @@ export function PRList({
         </div>
 
         <div className="table-wrap">
-          <table className="issues prs-table">
+          <table className="issues prs-table detail-table">
+            <colgroup>
+              {[26, 12, 20, 15, 13, 14].map((width, index) => (
+                <col key={index} style={{ width: `${width}%` }} />
+              ))}
+            </colgroup>
             <thead>
               <tr>
                 {[
                   "代码仓 / 序号 / 标题",
                   "作者 (外部贡献者)",
-                  "田主 / Committer (责任田)",
-                  "关联 Issue & 内部维护人",
+                  "维护人/田主/Committer",
+                  "关联Issue",
                   "状态 / CI / 提交 / 冲突 / 评审",
                   "停留 / 首次响应 / 评审滞留 / 时间",
                 ].map((x) => (
@@ -638,6 +643,31 @@ export function PRList({
                         </small>
                       </td>
                       <td>
+                        {attr.linkedIssues.length > 0 && (
+                          <>
+                            {attr.issueMaintainers.length > 0 ? (
+                              <small>
+                                内部维护人：
+                                {attr.issueMaintainers.map((m, idx) => (
+                                  <span key={m}>
+                                    {idx > 0 && "、"}
+                                    <button
+                                      type="button"
+                                      className="text author-btn"
+                                      onClick={() => set("issue_maintainer", m)}
+                                    >
+                                      {m}
+                                    </button>
+                                  </span>
+                                ))}
+                              </small>
+                            ) : (
+                              <small className="amber">
+                                关联 Issue 未分配内部维护人
+                              </small>
+                            )}
+                          </>
+                        )}
                         {attr.fields.length > 0 ? (
                           <div className="tags">
                             {attr.owners.map((owner) => (
@@ -683,27 +713,6 @@ export function PRList({
                                 <RelatedIssue key={li.id} issue={li} />
                               ))}
                             </div>
-                            {attr.issueMaintainers.length > 0 ? (
-                              <small>
-                                内部维护人：
-                                {attr.issueMaintainers.map((m, idx) => (
-                                  <span key={m}>
-                                    {idx > 0 && "、"}
-                                    <button
-                                      type="button"
-                                      className="text author-btn"
-                                      onClick={() => set("issue_maintainer", m)}
-                                    >
-                                      {m}
-                                    </button>
-                                  </span>
-                                ))}
-                              </small>
-                            ) : (
-                              <small className="amber">
-                                关联 Issue 未分配内部维护人
-                              </small>
-                            )}
                           </>
                         ) : (
                           <span className="muted">未关联 Issue</span>

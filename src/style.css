@@ -1402,9 +1402,6 @@ footer {
   }
 }
 
-.related-links {
-  margin-top: 8px;
-}
 .related-reference {
   display: inline-flex;
   align-items: center;
@@ -1416,4 +1413,32 @@ footer {
 .related-reference .tag {
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+/* Keep workbench columns stable even with long titles, logins and labels. */
+.issues.detail-table {
+  table-layout: fixed;
+  min-width: 1280px;
+}
+.issues.detail-table td {
+  width: auto;
+  min-width: 0;
+}
+.detail-table th,
+.detail-table td,
+.detail-table td small,
+.detail-table td a,
+.detail-table td button,
+.detail-table .tag {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.detail-table td a,
+.detail-table td button,
+.detail-table .tag {
+  max-width: 100%;
+  min-width: 0;
+}
+.detail-table .related-reference {
+  width: 100%;
 }

@@ -9,7 +9,9 @@ import os
 from pathlib import Path
 import smtplib
 import ssl
+import sys
 from urllib.parse import quote
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD_URL = 'https://kennchow.github.io/cann-issue-dashboard/'
@@ -409,8 +411,12 @@ def _unresolved_review_count(pr):
     )
 
 
-def _analyze_prs(previous, current):
+def _analyze_prs(previous, current, external_only=False):
     repos = current.get('repositories') or {}
+    if external_only:
+        repos = {name: {**record, **({'prs': [p for p in record['prs']
+                  if p.get('author_role') != 'internal']} if 'prs' in record else {})}
+                 for name, record in repos.items()}
     rows = [p for r in repos.values() for p in r.get('prs', [])]
     old_repos = previous.get('repositories') or {}
     old = {p['id']: p for r in old_repos.values() for p in r.get('prs', [])}
@@ -446,6 +452,7 @@ def _analyze_prs(previous, current):
     return {
         'available': any('prs' in r for r in repos.values()),
         'has_baseline': any('prs' in r for r in old_repos.values()),
+        'rows': rows,
         'stats': _pr_summary(rows, details),
         'repos': [(name, _pr_summary(r.get('prs', []), details)) for name, r in sorted(repos.items())],
         'groups': groups,
@@ -542,20 +549,21 @@ def _pr_item_text(pr, ctx):
 
 
 def _render_pr_text(ctx):
-    lines = ['', '【六、PR 通报】']
     if not ctx['available']:
-        return lines + ['尚未采集 PR 数据。']
-    lines.extend(_pr_overview_lines(ctx))
-    lines += ['', 'PR 分仓多维统计：']
+        return {key: ['尚未采集 PR 数据。'] for key in ('overview', 'repos', 'diff', 'risk')}
+    sections = {'overview': _pr_overview_lines(ctx)}
+    lines = []
     for repo, st in ctx['repos']:
         lines.append(f'- {repo}：共 {st["total"]} / 待处理 {st["open"]} / 已合并 {st["merged"]} / '
                      f'未合并关闭 {st["closed"]} | 闭环率 {st["closure_rate"]} | '
                      f'首响达标 {st["response_rate"]} | 待合并 {st["ready"]} / '
                      f'合并受阻 {st["blocked"]} / 首响超时 {st["timeout"]}')
 
+    sections['repos'] = lines
+    lines = []
     has_diff = any(ctx['groups'][key] for key, *_ in PR_DIFF_GROUPS)
     if has_diff:
-        lines += ['', 'PR 本次扫描变更明细：']
+        lines += ['本次外部 PR 扫描变更明细：']
         for key, title, limit, *_ in PR_DIFF_GROUPS:
             items = ctx['groups'][key]
             if not items:
@@ -577,9 +585,11 @@ def _render_pr_text(ctx):
             if len(items) > limit:
                 lines.append(f'  …另有 {len(items) - limit} 项，详见 PR详情。')
 
+    sections['diff'] = lines or ['本次扫描周期内无外部 PR 新增、合并、关闭或新增评论。']
+    lines = []
     has_risk = any(ctx['groups'][key] for key, *_ in PR_RISK_GROUPS)
     if has_risk:
-        lines += ['', 'PR 重点风险与待办清单：']
+        lines += ['外部 PR 重点风险与待办清单：']
         for idx, (key, title, limit, *_) in enumerate(PR_RISK_GROUPS, 1):
             items = ctx['groups'][key]
             if not items:
@@ -589,31 +599,18 @@ def _render_pr_text(ctx):
                 lines.extend([f'   - {_pr_item_text(pr, ctx)}', f'     {pr["url"]}'])
             if len(items) > limit:
                 lines.append(f'     …另有 {len(items) - limit} 项，详见 PR详情。')
-    return lines
+    sections['risk'] = lines or ['暂无外部 PR 重点跟踪项。']
+    return sections
 
 
 def _render_pr_html(ctx):
-    header_html = (
-        '<div style="margin-top:28px;padding-top:20px;border-top:2px solid #e2e8f0;">'
-        '<div style="margin-bottom:10px;font-size:15px;font-weight:700;color:#0f172a;'
-        'border-left:4px solid #2563eb;padding-left:10px;">'
-        '六、PR 通报'
-        f'<span style="float:right;font-size:12px;font-weight:600;">'
-        f'<a href="{DASHBOARD_URL}#/pr-dashboard" style="color:#2563eb;text-decoration:none;">PR数据总览 ↗</a>'
-        f'<span style="color:#cbd5e1;margin:0 6px;">·</span>'
-        f'<a href="{DASHBOARD_URL}#/prs" style="color:#2563eb;text-decoration:none;">PR详情 ↗</a>'
-        f'</span></div>'
-    )
     if not ctx['available']:
-        return (
-            header_html
-            + '<div style="margin-top:10px;padding:14px;background:#f8fafc;border:1px dashed #cbd5e1;'
-              'border-radius:8px;color:#64748b;font-size:13px;text-align:center;">尚未采集 PR 数据。</div></div>'
-        )
+        return {key: '<p>尚未采集 PR 数据。</p>' for key in ('overview', 'repos', 'diff', 'risk')}
+    sections = {}
 
     st = ctx['stats']
     groups = ctx['groups']
-    blocks = [header_html]
+    blocks = []
 
     # 基线与采集警告横幅（与 Issue 顶部横幅视觉风格严格一致）
     if not ctx['has_baseline']:
@@ -688,6 +685,9 @@ def _render_pr_html(ctx):
         '</table>'
     )
 
+    sections['overview'] = ''.join(blocks)
+    blocks = []
+
     # 1. PR 分仓多维统计明细表（带斑马纹、徽章与全量合计行，与二、Issue 分仓表一致）
     pr_repo_trs = []
     for idx, (repo, r_st) in enumerate(ctx['repos']):
@@ -747,6 +747,9 @@ def _render_pr_html(ctx):
         f'{"".join(pr_repo_trs)}</table></div>'
     )
 
+    sections['repos'] = ''.join(blocks)
+    blocks = []
+
     # 2. 本次 PR 扫描变更明细（卡片式分组，与三、Issue 扫描变更明细一致）
     pr_diff_cards = []
     for key, title, limit, badge_tone, hdr_bg, hdr_border, hdr_fg in PR_DIFF_GROUPS:
@@ -802,6 +805,9 @@ def _render_pr_html(ctx):
             'border-radius:8px;color:#64748b;font-size:12px;text-align:center;">'
             '本次扫描周期内无新增 PR、新合并、新关闭或新增评论。</div>'
         )
+
+    sections['diff'] = ''.join(blocks)
+    blocks = []
 
     # 3. PR 重点风险与待办清单（结构化表格卡片，与四、Issue 重点风险待办清单一致）
     pr_risk_cards = []
@@ -878,8 +884,8 @@ def _render_pr_html(ctx):
             f'{"".join(pr_risk_cards)}</div>'
         )
 
-    blocks.append('</div>')
-    return ''.join(blocks)
+    sections['risk'] = ''.join(blocks) or '<p>暂无外部 PR 重点跟踪项。</p>'
+    return sections
 
 
 def _analyze(previous, current, outcome='success'):
@@ -1010,31 +1016,12 @@ def _analyze(previous, current, outcome='success'):
     open_timeout_list.sort(key=lambda pair: (pair[0].get('created_at', ''), pair[0].get('id', '')), reverse=True)
 
     # 内部维护人负载排行
-    owners_data = current.get('owners') or []
-    internal_owners = [
-        o for o in owners_data
-        if o.get('role') in ('internal', 'mixed') and (o.get('stats') or {}).get('open', 0) > 0
-    ]
-    internal_owners.sort(
-        key=lambda o: (
-            (o.get('stats') or {}).get('open', 0),
-            (o.get('stats') or {}).get('overdue', 0),
-            (o.get('stats') or {}).get('unreplied', 0),
-        ),
-        reverse=True,
-    )
-
-    subject = (
-        f'[CANN] Issue 巡检 | 待处理 {counts["open"]} · 超期 {counts["overdue"]} · '
-        f'新增 {len(new_issues)} / 更新 {changed}'
-    )
+    subject = '[CANN] Issue / PR数据通报'
     pr_report = _analyze_prs(previous, current)
-    if pr_report['available']:
-        subject = subject.replace('Issue 巡检', 'Issue / PR 巡检', 1)
-        subject += f' | PR 待处理 {pr_report["stats"]["open"]} · 新增 {len(pr_report["groups"]["new"])}'
 
     return {
         'pr_report': pr_report,
+        'external_pr_report': _analyze_prs(previous, current, external_only=True),
         'subject': subject,
         'at': at,
         'snapshot_iso': snapshot_iso,
@@ -1057,7 +1044,6 @@ def _analyze(previous, current, outcome='success'):
         'due_soon_list': due_soon_list,
         'open_soon_resp_list': open_soon_resp_list,
         'open_timeout_list': open_timeout_list,
-        'internal_owners': internal_owners,
         'errors': current.get('errors') or [],
         'warnings': warnings,
     }
@@ -1073,8 +1059,51 @@ def _rate_status_label(rate, target, warn=50.0):
     return f'未达标 <{int(warn)}%'
 
 
+def _owner_groups(rows):
+    groups = {}
+    for item in rows:
+        if item.get('state') != 'open':
+            continue
+        names = {_clean_text(p.get('login'), '') for p in item.get('assignees') or []
+                 if isinstance(p, dict) and p.get('login')}
+        if item.get('workload_owner') and item['workload_owner'] != '未分配':
+            names.add(_clean_text(item['workload_owner']))
+        for name in names or {'未分配'}:
+            groups.setdefault(name, []).append(item)
+    return sorted(groups.items(), key=lambda pair: (-len(pair[1]), pair[0]))
+
+
+def _owner_list_text(rows, kind):
+    lines = ['按当前指派及工作量责任人列出全部待处理条目；多人负责的条目分别列入各人名下。']
+    for name, items in _owner_groups(rows):
+        lines.append(f'{name}：待处理 {len(items)}')
+        for item in sorted(items, key=lambda item: item['id']):
+            lines.append(f'- {item["id"]} {_clean_text(item.get("title"))} | {item["url"]}')
+    return lines if len(lines) > 1 else [f'暂无待处理 {kind}。']
+
+
+def _section_html(title, body):
+    return ('<div style="margin-top:24px;">'
+            '<div style="margin-bottom:10px;font-size:15px;font-weight:700;color:#0f172a;'
+            'border-left:4px solid #2563eb;padding-left:10px;">'
+            f'{html.escape(title)}</div>{body}</div>')
+
+
+def _owner_list_html(rows, kind):
+    blocks = ['<p style="font-size:12px;color:#64748b;">按当前指派及工作量责任人列出全部待处理条目；多人负责的条目分别列入各人名下。</p>']
+    for name, items in _owner_groups(rows):
+        blocks.append(f'<div><strong>{html.escape(name)}：待处理 {len(items)}</strong><ul>')
+        for item in sorted(items, key=lambda item: item['id']):
+            label = html.escape(f'{item["id"]} {_clean_text(item.get("title"))}')
+            blocks.append(f'<li><a href="{html.escape(item["url"], quote=True)}">{label}</a></li>')
+        blocks.append('</ul></div>')
+    return ''.join(blocks) if len(blocks) > 1 else f'<p>暂无待处理 {kind}。</p>'
+
+
 def render(previous, current, outcome='success'):
     ctx = _analyze(previous, current, outcome)
+    external_pr = ctx['external_pr_report']
+    pr_sections = _render_pr_text(external_pr)
     counts = ctx['counts']
     sla = ctx['global_sla']
 
@@ -1089,7 +1118,7 @@ def render(previous, current, outcome='success'):
         ctx['subject'],
         f'{ctx["at"]}（北京时间）',
         '',
-        '【一、全局概况与官方 SLA 核心指标】',
+        '【一、全局概况与核心指标】',
         summary('全量', {'issues': ctx['rows'], 'stats': counts}, ctx['snapshot_iso']),
         (
             f'待关注：超期 {counts["overdue"]} / 临期 {counts["due_soon"]} / '
@@ -1116,7 +1145,9 @@ def render(previous, current, outcome='success'):
             f'（Open 未响应且停留 >24h 工作日）'
         ),
         '',
-        '【二、分仓多维统计明细】',
+        *_render_pr_text(ctx['pr_report'])['overview'],
+        '',
+        '【二、各仓Issue多维统计明细】',
     ]
 
     for repo, record in sorted(ctx['repos'].items()):
@@ -1124,7 +1155,11 @@ def render(previous, current, outcome='success'):
 
     lines += [
         '',
-        '【三、本次扫描变更明细】',
+        '【三、各仓外部PR多维统计明细】',
+        *pr_sections['repos'],
+        '',
+        '【四、本次扫描Issue和外部PR变更明细】',
+        '（一）Issue 变更明细',
         (
             f'本次：新增 Issue {len(ctx["new_issues"])} / 更新 {ctx["changed"]} / '
             f'新评论 {ctx["new_comments_total"]} / 新 AI 报告 {ctx["new_reports_total"]} '
@@ -1199,8 +1234,8 @@ def render(previous, current, outcome='success'):
                 f'  报告：{report_url} | Issue：{item["url"]}',
             ]
 
+    lines += ['', '（二）外部PR 变更明细', *pr_sections['diff'], '', '【五、Issue重点跟踪清单】']
     if ctx['no_internal_list'] or ctx['due_soon_list'] or ctx['open_soon_resp_list'] or ctx['open_timeout_list']:
-        lines += ['', '【四、重点风险待办清单】']
         if ctx['no_internal_list']:
             lines.append(f'1) 未分配内部维护人（共 {len(ctx["no_internal_list"])} 项，展示前 {min(8, len(ctx["no_internal_list"]))} 项）：')
             for item in ctx['no_internal_list'][:8]:
@@ -1236,21 +1271,11 @@ def render(previous, current, outcome='success'):
                     f'   - {item["id"]} {title}（已停留 {stay_h:.1f} 工作日小时未首响 | 责任人：{owner}） {item["url"]}'
                 )
 
-    if ctx['internal_owners']:
-        lines += ['', '【五、内部维护人待办负载 Top 排行】']
-        for idx, owner_entry in enumerate(ctx['internal_owners'][:10], 1):
-            login = _clean_text((owner_entry.get('person') or {}).get('login'))
-            st = owner_entry.get('stats') or {}
-            repos_str = '、'.join(
-                f'{r.split("/")[-1]}({n})' for r, n in sorted((owner_entry.get('repos') or {}).items())
-            )
-            lines.append(
-                f'{idx}. {login}：待处理 {st.get("open", 0)}（超期 {st.get("overdue", 0)} / '
-                f'临期 {st.get("due_soon", 0)} / 未回复 {st.get("unreplied", 0)} / '
-                f'含 AI 报告 {st.get("has_report", 0)}）| 仓库：{repos_str}'
-            )
-
-    lines.extend(_render_pr_text(ctx['pr_report']))
+    else:
+        lines.append('暂无 Issue 重点跟踪项。')
+    lines += ['', '【六、各责任人名下Issue清单】', *_owner_list_text(ctx['rows'], 'Issue'),
+              '', '【七、外部重点跟踪清单】', *pr_sections['risk'],
+              '', '【八、各责任人名下PR清单】', *_owner_list_text(external_pr['rows'], '外部 PR')]
 
     errors = ctx['errors']
     if outcome != 'success' or errors:
@@ -1529,7 +1554,7 @@ def render_html(previous, current, outcome='success'):
             '本次扫描周期内无新增 Issue、新闭环、指派变更或新增评论/报告。</div>'
         )
 
-    # 四、重点风险待办清单 HTML
+    # 五、Issue重点跟踪清单 HTML
     risk_sections_html = []
     if ctx['no_internal_list']:
         rows_html = []
@@ -1645,64 +1670,11 @@ def render_html(previous, current, outcome='success'):
             f'{"".join(rows_html)}</table></div>'
         )
 
-    # 五、内部维护人负载 Top 排行 HTML
-    owners_html_block = ''
-    if ctx['internal_owners']:
-        owner_trs = []
-        for idx, owner_entry in enumerate(ctx['internal_owners'][:10], 1):
-            bg = '#ffffff' if idx % 2 == 1 else '#f8fafc'
-            login = _clean_text((owner_entry.get('person') or {}).get('login'))
-            owner_url = f'{DASHBOARD_URL}#/issues?owner={quote(login, safe="")}'
-            st = owner_entry.get('stats') or {}
-            repos_str = '、'.join(
-                f'{r.split("/")[-1]}({n})' for r, n in sorted((owner_entry.get('repos') or {}).items())
-            )
-            ov = st.get('overdue', 0)
-            soon = st.get('due_soon', 0)
-            unrep = st.get('unreplied', 0)
-            rep_cnt = st.get('has_report', 0)
-            owner_trs.append(
-                f'<tr style="background:{bg};">'
-                f'<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#64748b;font-weight:600;">#{idx}</td>'
-                f'<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;">'
-                f'<a href="{owner_url}" style="color:#2563eb;text-decoration:none;">{html.escape(login)}</a></td>'
-                f'<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;">{html.escape(repos_str)}</td>'
-                f'<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;color:#1d4ed8;">{st.get("open", 0)}</td>'
-                f'<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;color:{"#dc2626" if ov else "#64748b"};font-weight:{"700" if ov else "400"};">{ov}</td>'
-                f'<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;color:{"#d97706" if soon else "#64748b"};">{soon}</td>'
-                f'<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;color:{"#b45309" if unrep else "#64748b"};font-weight:{"700" if unrep else "400"};">{unrep}</td>'
-                f'<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;color:#6d28d9;">{rep_cnt}</td>'
-                f'</tr>'
-            )
-        owners_html_block = (
-            '<div style="margin-top:24px;">'
-            '<div style="margin-bottom:10px;font-size:15px;font-weight:700;color:#0f172a;border-left:4px solid #2563eb;padding-left:10px;">'
-            '五、内部维护人待办负载 Top 10'
-            f'<a href="{DASHBOARD_URL}#/members" style="float:right;font-size:12px;font-weight:600;color:#2563eb;text-decoration:none;">内部维护人总表 ↗</a>'
-            '</div>'
-            '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">'
-            '<tr style="background:#f1f5f9;color:#334155;text-align:left;font-size:12px;white-space:nowrap;">'
-            '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;">排名</th>'
-            '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;">内部维护人</th>'
-            '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;">仓库分布</th>'
-            '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">待处理</th>'
-            '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">已超期</th>'
-            '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">即将超期</th>'
-            '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">未回复</th>'
-            '<th style="padding:9px 10px;border-bottom:1px solid #cbd5e1;text-align:right;">含 AI 报告</th>'
-            '</tr>'
-            f'{"".join(owner_trs)}</table></div>'
-        )
-
-    risk_block_html = ''
-    if risk_sections_html:
-        risk_block_html = (
-            '<div style="margin-top:24px;">'
-            '<div style="margin-bottom:10px;font-size:15px;font-weight:700;color:#0f172a;border-left:4px solid #dc2626;padding-left:10px;">'
-            '四、重点风险待办清单'
-            '</div>'
-            f'{"".join(risk_sections_html)}</div>'
-        )
+    owners_html_block = _section_html('六、各责任人名下Issue清单', _owner_list_html(ctx['rows'], 'Issue'))
+    risk_block_html = _section_html('五、Issue重点跟踪清单', ''.join(risk_sections_html) or '<p>暂无 Issue 重点跟踪项。</p>')
+    external_pr = ctx['external_pr_report']
+    pr_sections = _render_pr_html(external_pr)
+    pr_overview = _render_pr_html(ctx['pr_report'])['overview']
 
     pr_rep = ctx['pr_report']
     pr_banner_summary = ''
@@ -1736,7 +1708,7 @@ def render_html(previous, current, outcome='success'):
           <tr>
             <td>
               <div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#93c5fd;font-weight:700;">CANN ISSUE &amp; PR OBSERVATORY · 闭环监控巡检报告</div>
-              <div style="margin-top:4px;font-size:20px;font-weight:800;color:#ffffff;">四仓 Issue / PR 态势与 SLA 巡检汇总</div>
+              <div style="margin-top:4px;font-size:20px;font-weight:800;color:#ffffff;">Issue / PR数据通报</div>
               <div style="margin-top:4px;font-size:12px;color:#cbd5e1;">快照时间：{html.escape(ctx["at"])}（北京时间 UTC+8） · 本次新增 <strong>{len(ctx["new_issues"])}</strong> / 更新 <strong>{ctx["changed"]}</strong> / 新评论 <strong>{ctx["new_comments_total"]}</strong> / 新 AI 报告 <strong>{ctx["new_reports_total"]}</strong>{pr_banner_summary}</div>
             </td>
             <td align="right" valign="top" style="white-space:nowrap;">
@@ -1767,9 +1739,9 @@ def render_html(previous, current, outcome='success'):
       <td style="padding:20px 24px;">
         {"".join(alert_banners)}
 
-        <!-- 一、全局概况与官方 SLA 核心指标 -->
+        <!-- 一、全局概况与核心指标 -->
         <div style="margin-bottom:10px;font-size:15px;font-weight:700;color:#0f172a;border-left:4px solid #2563eb;padding-left:10px;">
-          一、全局概况与官方 SLA 核心指标
+          一、全局概况与核心指标
         </div>
         <div style="margin-bottom:12px;font-size:12px;color:#64748b;">
           统计口径：剔除中国大陆法定节假日及周末，首次响应排除自处理（<strong>{sla["excluded_self_processed"]}</strong> 项）及里程碑（<strong>{sla["excluded_milestone"]}</strong> 项）Issue。
@@ -1816,10 +1788,12 @@ def render_html(previous, current, outcome='success'):
           </tr>
         </table>
 
+        {pr_overview}
+
         <!-- 二、分仓多维明细表 -->
         <div style="margin-top:24px;">
           <div style="margin-bottom:10px;font-size:15px;font-weight:700;color:#0f172a;border-left:4px solid #2563eb;padding-left:10px;">
-            二、分仓多维统计明细
+            二、各仓Issue多维统计明细
           </div>
           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
             <tr style="background:#f1f5f9;color:#334155;text-align:left;white-space:nowrap;">
@@ -1838,20 +1812,26 @@ def render_html(previous, current, outcome='success'):
           </table>
         </div>
 
-        <!-- 三、本次扫描变更明细 -->
+        {_section_html('三、各仓外部PR多维统计明细', pr_sections['repos'])}
+
+        <!-- 四、本次扫描Issue和外部PR变更明细 -->
         <div style="margin-top:24px;">
           <div style="margin-bottom:8px;font-size:15px;font-weight:700;color:#0f172a;border-left:4px solid #2563eb;padding-left:10px;">
-            三、本次扫描变更明细
+            四、本次扫描Issue和外部PR变更明细
           </div>
+          <h4>（一）Issue 变更明细</h4>
           <div style="font-size:12px;color:#475569;">
             本次汇总：新增 Issue <strong>{len(ctx["new_issues"])}</strong> / 更新 <strong>{ctx["changed"]}</strong> / 新闭环 <strong>{len(ctx["newly_closed"])}</strong> / 指派变更 <strong>{len(ctx["assignee_changed"])}</strong> / 新评论 <strong>{ctx["new_comments_total"]}</strong> / 新 AI 报告 <strong>{ctx["new_reports_total"]}</strong>
           </div>
           {"".join(diff_blocks)}
+          <h4>（二）外部PR 变更明细</h4>
+          {pr_sections["diff"]}
         </div>
 
         {risk_block_html}
         {owners_html_block}
-        {_render_pr_html(ctx['pr_report'])}
+        {_section_html('七、外部重点跟踪清单', pr_sections['risk'])}
+        {_section_html('八、各责任人名下PR清单', _owner_list_html(external_pr['rows'], '外部 PR'))}
       </td>
     </tr>
 
@@ -1881,7 +1861,7 @@ def send_report(body, config, env, html_body=None):
         raise ValueError('SMTP_SECURITY must be ssl or starttls')
     port = int(env.get('SMTP_PORT') or ('465' if security == 'ssl' else '587'))
     message = EmailMessage()
-    message['Subject'] = body.splitlines()[0] if body.startswith('[CANN] ') else '[CANN] Issue 汇总'
+    message['Subject'] = body.splitlines()[0] if body.startswith('[CANN] ') else '[CANN] Issue / PR数据通报'
     message['From'] = env['SMTP_FROM']
     message['To'] = ', '.join(recipients)
     message.set_content(body, charset='utf-8')

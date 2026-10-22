@@ -26,7 +26,7 @@ class ReportTests(unittest.TestCase):
         self.assertIn('新增 Issue 1 / 更新 1 / 新评论 1', text)
         self.assertIn('https://gitcode.com/cann/ge/issues/2', text)
         self.assertIn('创建：2026-10-15 09:00（北京时间） | 提交人：test-author', text)
-        self.assertNotIn('https://gitcode.com/cann/ge/issues/1', text)
+        self.assertIn('https://gitcode.com/cann/ge/issues/1', text.split('【六、各责任人名下Issue清单】')[1])
         self.assertIn('10:00（北京时间）', text)
         self.assertIn('共 2 / 待处理 2', text)
 
@@ -103,28 +103,28 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(sla['closure_rate'], 25.0)
 
         text = render(before, after)
-        self.assertIn('[CANN] Issue 巡检 | 待处理 3 · 超期 0 · 新增 0 / 更新 2', text)
-        self.assertIn('【一、全局概况与官方 SLA 核心指标】', text)
-        self.assertIn('【二、分仓多维统计明细】', text)
+        self.assertIn('[CANN] Issue / PR数据通报', text)
+        self.assertIn('【一、全局概况与核心指标】', text)
+        self.assertIn('【二、各仓Issue多维统计明细】', text)
         self.assertIn('本次新闭环 Issue：', text)
         self.assertIn('本次指派变更 Issue：', text)
         self.assertIn('本次新增评论 Issue：', text)
         self.assertIn('本次新增 AI 诊断报告 Issue：', text)
-        self.assertIn('【四、重点风险待办清单】', text)
+        self.assertIn('【五、Issue重点跟踪清单】', text)
         self.assertIn('3) 即将响应超时 ≤24h 工作日', text)
         self.assertIn('4) 开启未响应超时 >24h 工作日', text)
         self.assertLess(text.index('3) 即将响应超时 ≤24h 工作日'), text.index('4) 开启未响应超时 >24h 工作日'))
-        self.assertIn('【五、内部维护人待办负载 Top 排行】', text)
-        self.assertIn('dev_a：待处理 3', text)
+        self.assertIn('【六、各责任人名下Issue清单】', text)
+        self.assertIn('ext_user：待处理 1', text)
 
         html_doc = render_html(before, after)
         self.assertIn('<!DOCTYPE html>', html_doc)
-        self.assertIn('四仓 Issue / PR 态势与 SLA 巡检汇总', html_doc)
+        self.assertIn('Issue / PR数据通报', html_doc)
         self.assertIn('3. 即将响应超时 &le;24h 工作日', html_doc)
         self.assertIn('4. 开启未响应超时 &gt;24h 工作日', html_doc)
         self.assertLess(html_doc.index('3. 即将响应超时'), html_doc.index('4. 开启未响应超时'))
         self.assertIn('本次新闭环 Issue', html_doc)
-        self.assertIn('内部维护人待办负载 Top 10', html_doc)
+        self.assertIn('六、各责任人名下Issue清单', html_doc)
 
 
 def pr_item(number, **overrides):
@@ -153,6 +153,7 @@ class PrReportTests(unittest.TestCase):
             'created_at': '2026-10-14T02:00:00Z', 'comment_type': 'diff_comment', 'resolved': False,
         }]
         prs[3]['draft'] = True
+        prs[3]['title'] = '<script>external</script>'
         prs.append(pr_item(5, title='<script>alert("test")</script>', author_role='internal'))
         text = render(before, after)
         doc = render_html(before, after)
@@ -163,12 +164,13 @@ class PrReportTests(unittest.TestCase):
                 'PR 待关注：待合并 2 / 合并受阻 1 / 未首响 1 / 首响超时 1',
                 '本次 PR：新增 1 / 更新 4 / 新合并 1 / 新关闭 1 / 新评论 1',
                 '本次新合并 PR', '本次新关闭 PR（未合并）', '本次新增评论 PR',
-                '存在未解决评审意见的 PR', 'cann/ge!5', '指派：reviewer[内部]',
-                '#/pr-dashboard', '#/prs', 'https://gitcode.com/cann/ge/merge_requests/5',
+                '存在未解决评审意见的 PR', 'cann/ge!4', '指派：reviewer[内部]',
+                '#/pr-dashboard', '#/prs', 'https://gitcode.com/cann/ge/merge_requests/4',
             ):
                 self.assertIn(phrase, output)
-        self.assertTrue(text.startswith('[CANN] Issue / PR 巡检'))
-        self.assertIn('PR 待处理 3 · 新增 1', text.splitlines()[0])
+        self.assertEqual(text.splitlines()[0], '[CANN] Issue / PR数据通报')
+        self.assertNotIn('cann/ge!5', text)
+        self.assertNotIn('cann/ge!5', doc)
         self.assertIn('&lt;script&gt;', doc)
         self.assertNotIn('<script>', doc)
         for html_phrase in (
@@ -179,6 +181,37 @@ class PrReportTests(unittest.TestCase):
             '未解决评审 1',
         ):
             self.assertIn(html_phrase, doc)
+
+    def test_section_order_scopes_and_owner_lists(self):
+        current = snapshot([item(1), item(2)])
+        current['repositories']['cann/ge']['issues'][0]['assignees'] = [
+            {'login': 'alice'}, {'login': 'bob'}]
+        current['repositories']['cann/ge']['prs'] = [
+            pr_item(1, author_role='internal', title='INTERNAL_ONLY'),
+            pr_item(2, author_role='external', title='EXTERNAL_ONLY'),
+        ]
+        titles = ['一、全局概况与核心指标', '二、各仓Issue多维统计明细',
+                  '三、各仓外部PR多维统计明细', '四、本次扫描Issue和外部PR变更明细',
+                  '五、Issue重点跟踪清单', '六、各责任人名下Issue清单',
+                  '七、外部重点跟踪清单', '八、各责任人名下PR清单']
+        for renderer in (render, render_html):
+            for snap in (current, snapshot([])):
+                output = renderer({}, snap)
+                positions = [output.index(title) for title in titles]
+                self.assertEqual(positions, sorted(positions))
+                self.assertIn('（一）Issue 变更明细', output)
+                self.assertIn('（二）外部PR 变更明细', output)
+            output = renderer({}, current)
+            overview = output.split(titles[1])[0]
+            self.assertIn('PR 全量：共 2 / 待处理 2', overview)
+            self.assertNotIn('INTERNAL_ONLY', output)
+            self.assertIn('EXTERNAL_ONLY', output)
+            owners = output.split(titles[5])[-1].split(titles[6])[0]
+            for name in ('alice', 'bob', '未分配'):
+                self.assertIn(name, owners)
+            self.assertIn('cann/ge#1', owners)
+            self.assertIn('cann/ge#2', owners)
+            self.assertIn('reviewer', output.split(titles[7])[-1])
 
     def test_pr_baseline_overlap_and_old_snapshots(self):
         old = snapshot([])

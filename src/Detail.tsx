@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { Issue } from "./types";
+import { RelatedPrs } from "./RelatedLinks";
+import type { Issue, PullRequest } from "./types";
 import { fmt, memberLabel } from "./shared";
 import { Badges } from "./Badges";
 import { exportView } from "./export";
@@ -8,12 +9,14 @@ import { evaluateIssueSla } from "./sla";
 export function Detail({
   issue: i,
   issues = [],
+  prs = [],
   onSelect,
   close,
   at,
 }: {
   issue: Issue;
   issues?: Issue[];
+  prs?: PullRequest[];
   onSelect?: (id: string) => void;
   close: () => void;
   at: string;
@@ -163,6 +166,12 @@ export function Detail({
           </a>
         </p>
         <dl className="meta-grid">
+          <dt>关联 PR</dt>
+          <dd>
+            <RelatedPrs
+              prs={prs.filter((pr) => pr.linked_issues?.includes(i.id))}
+            />
+          </dd>
           <dt>提出人（创建者）</dt>
           <dd>{i.author.login}</dd>
           <dt>负责人</dt>

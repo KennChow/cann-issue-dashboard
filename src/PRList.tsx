@@ -1,12 +1,9 @@
+import { RelatedIssue } from "./RelatedLinks";
 import type { Issue, PullRequest } from "./types";
 import type { DutyData } from "./duty";
 import { fmt, short, go } from "./shared";
 import { exportPrs } from "./export";
-import {
-  TIME_PRESETS,
-  resolveTimeRange,
-  toBeijingDateStr,
-} from "./sla";
+import { TIME_PRESETS, resolveTimeRange, toBeijingDateStr } from "./sla";
 import {
   evaluatePrSla,
   resolvePrAttribution,
@@ -227,10 +224,7 @@ export function PRList({
     )
       return false;
     if (value("ci") && pr.ci_status !== value("ci")) return false;
-    if (
-      value("draft") &&
-      (value("draft") === "draft" ? !pr.draft : pr.draft)
-    )
+    if (value("draft") && (value("draft") === "draft" ? !pr.draft : pr.draft))
       return false;
     if (
       value("conflict") &&
@@ -330,8 +324,7 @@ export function PRList({
     const def = k === "state" ? "open" : "";
     const v = value(k, def);
     if (v === def) return [];
-    const displayVal =
-      k === "repo" ? short(v) : filterValueLabels[k]?.[v] || v;
+    const displayVal = k === "repo" ? short(v) : filterValueLabels[k]?.[v] || v;
     return [{ key: k, label: filterLabels[k], value: displayVal }];
   });
 
@@ -687,20 +680,7 @@ export function PRList({
                           <>
                             <div className="tags">
                               {attr.linkedIssues.map((li) => (
-                                <button
-                                  key={li.id}
-                                  type="button"
-                                  className="tag green"
-                                  title={li.title}
-                                  onClick={() =>
-                                    go(
-                                      { state: "all", id: li.id },
-                                      "issues",
-                                    )
-                                  }
-                                >
-                                  {short(li.repo)}#{li.number} ↗
-                                </button>
+                                <RelatedIssue key={li.id} issue={li} />
                               ))}
                             </div>
                             {attr.issueMaintainers.length > 0 ? (
@@ -712,9 +692,7 @@ export function PRList({
                                     <button
                                       type="button"
                                       className="text author-btn"
-                                      onClick={() =>
-                                        set("issue_maintainer", m)
-                                      }
+                                      onClick={() => set("issue_maintainer", m)}
                                     >
                                       {m}
                                     </button>

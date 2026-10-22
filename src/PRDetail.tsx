@@ -1,7 +1,8 @@
+import { RelatedIssue } from "./RelatedLinks";
 import { useEffect, useState } from "react";
 import type { Issue, PullRequest } from "./types";
 import type { DutyData } from "./duty";
-import { fmt, short, go } from "./shared";
+import { fmt } from "./shared";
 import { exportView } from "./export";
 import { evaluatePrSla, resolvePrAttribution } from "./pr";
 import { CI_LABELS, REVIEW_STATUS_LABELS } from "./PRList";
@@ -224,17 +225,7 @@ export function PRDetail({
             {attr.linkedIssues.length > 0 ? (
               attr.linkedIssues.map((li) => (
                 <div key={li.id}>
-                  <button
-                    type="button"
-                    className="text blue"
-                    onClick={() => {
-                      close();
-                      go({ state: "all", id: li.id }, "issues");
-                    }}
-                  >
-                    {short(li.repo)}#{li.number} {li.title}
-                  </button>{" "}
-                  · 内部维护人：
+                  <RelatedIssue issue={li} /> · 内部维护人：
                   <strong>
                     {li.internalMaintainers.join("、") || "未分配内部维护人"}
                   </strong>

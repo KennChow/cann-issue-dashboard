@@ -41,7 +41,10 @@ export type PrSlaDetail = {
   reviewStayWorkHours: number | null;
 };
 
-export function evaluatePrSla(pr: PullRequest, snapshotIso: string): PrSlaDetail {
+export function evaluatePrSla(
+  pr: PullRequest,
+  snapshotIso: string,
+): PrSlaDetail {
   const isReady = !pr.draft && pr.mergeable && pr.ci_status === "passed";
   const isReadyToMerge = pr.state === "open" && isReady;
   const isBlockedMerge = pr.state === "open" && !isReady;
@@ -337,6 +340,7 @@ export type LinkedIssueRef = {
   title: string;
   state: string;
   url: string;
+  source_status: string;
   internalMaintainers: string[];
   allAssignees: string[];
 };
@@ -392,15 +396,6 @@ export function resolvePrAttribution(
   dutyData: DutyData | undefined,
   issueMap: Map<string, Issue>,
 ): PrAttribution {
-  if (pr.author_role === "internal") {
-    return {
-      fields: [],
-      owners: [],
-      committers: [],
-      linkedIssues: [],
-      issueMaintainers: [],
-    };
-  }
   const fields: PrDutyFieldRef[] = [];
   const fieldKeySet = new Set<string>();
   const addField = (f: PrDutyFieldRef) => {
@@ -411,7 +406,7 @@ export function resolvePrAttribution(
     }
   };
 
-  if (dutyData) {
+  if (dutyData && pr.author_role !== "internal") {
     const shortRepo = pr.repo.replace(/^cann\//, "");
     const files = pr.files || [];
     if (files.length > 0) {
@@ -461,14 +456,16 @@ export function resolvePrAttribution(
     }
   }
 
-  const owners = Array.from(new Set(fields.map((f) => f.owner).filter(Boolean)));
+  const owners = Array.from(
+    new Set(fields.map((f) => f.owner).filter(Boolean)),
+  );
   const committers = Array.from(
     new Set(fields.map((f) => f.committer).filter(Boolean)),
   );
 
   const linkedIssues: LinkedIssueRef[] = [];
   const issueMaintainerSet = new Set<string>();
-  for (const issueId of pr.linked_issues || []) {
+  for (const issueId of new Set(pr.linked_issues || [])) {
     const found = issueMap.get(issueId);
     if (found) {
       const internalMaintainers = Array.from(
@@ -490,6 +487,7 @@ export function resolvePrAttribution(
         number: found.number,
         title: found.title,
         state: found.state,
+        source_status: found.source_status,
         url: found.url,
         internalMaintainers,
         allAssignees: found.assignees.map((a) => a.login),
@@ -503,6 +501,7 @@ export function resolvePrAttribution(
           number: inum,
           title: `Issue #${inum}`,
           state: "unknown",
+          source_status: "",
           url: `https://gitcode.com/${irepo}/issues/${inum}`,
           internalMaintainers: [],
           allAssignees: [],
@@ -516,7 +515,8 @@ export function resolvePrAttribution(
     owners,
     committers,
     linkedIssues,
-    issueMaintainers: Array.from(issueMaintainerSet),
+    issueMaintainers:
+      pr.author_role === "internal" ? [] : Array.from(issueMaintainerSet),
   };
 }
 

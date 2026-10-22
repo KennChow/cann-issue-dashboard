@@ -1,4 +1,6 @@
-import type { Issue } from "./types";
+import { useMemo } from "react";
+import { RelatedPrs, indexRelatedPrs } from "./RelatedLinks";
+import type { Issue, PullRequest } from "./types";
 import { fmt, short, go } from "./shared";
 import { Badges } from "./Badges";
 import { exportIssues } from "./export";
@@ -52,7 +54,10 @@ const presets: { label: string; params: Record<string, string> }[] = [
   { label: "全部 Open", params: {} },
   { label: "🔥 已超期", params: { risk: "overdue" } },
   { label: "⚡ 即将超期", params: { risk: "soon" } },
-  { label: "⏱️ 首响未达标", params: { state: "all", first_resp: "unqualified" } },
+  {
+    label: "⏱️ 首响未达标",
+    params: { state: "all", first_resp: "unqualified" },
+  },
   { label: "👤 缺内部维护人", params: { internal: "missing" } },
   { label: "💬 待维护人回复", params: { reply: "unreplied" } },
   { label: "🤖 含 AI 报告", params: { ai: "yes" } },
@@ -60,13 +65,16 @@ const presets: { label: string; params: Record<string, string> }[] = [
 
 export function IssueList({
   issues,
+  prs,
   hash,
   at,
 }: {
   issues: Issue[];
+  prs: PullRequest[];
   hash: string;
   at: string;
 }) {
+  const relatedPrs = useMemo(() => indexRelatedPrs(prs), [prs]);
   const p = new URLSearchParams(hash.split("?")[1] || "");
   const value = (k: string, d = "") => p.get(k) || d;
   const set = (k: string, v: string) => {
@@ -190,8 +198,7 @@ export function IssueList({
     const def = k === "state" ? "open" : "";
     const v = value(k, def);
     if (v === def) return [];
-    const displayVal =
-      k === "repo" ? short(v) : filterValueLabels[k]?.[v] || v;
+    const displayVal = k === "repo" ? short(v) : filterValueLabels[k]?.[v] || v;
     return [{ key: k, label: filterLabels[k], value: displayVal }];
   });
 
@@ -462,6 +469,10 @@ export function IssueList({
                     <a href={i.url} target="_blank" rel="noreferrer">
                       原始 Issue ↗
                     </a>
+                    <div className="related-links">
+                      <small className="muted">关联 PR</small>
+                      <RelatedPrs prs={relatedPrs.get(i.id) || []} />
+                    </div>
                   </td>
                   <td>
                     {i.assignees.map((a) => a.login).join(", ") || (

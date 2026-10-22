@@ -1401,3 +1401,19 @@ footer {
     border-radius: 12px;
   }
 }
+
+.related-links {
+  margin-top: 8px;
+}
+.related-reference {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 100%;
+}
+.related-reference a,
+.related-reference .tag {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}

@@ -418,7 +418,7 @@ function App() {
             at={data.generated_at}
           />
         ) : view.includes("issues") ? (
-          <IssueList issues={all} hash={hash} at={data.generated_at} />
+          <IssueList issues={all} prs={allPrs} hash={hash} at={data.generated_at} />
         ) : (
           <>
             <section className="panel sla-section overview-panel">
@@ -1183,6 +1183,7 @@ function App() {
       {selected && (
         <Detail
           issue={selected}
+          prs={allPrs}
           issues={all}
           at={data.generated_at}
           onSelect={(id) => {

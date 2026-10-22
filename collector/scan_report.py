@@ -11,7 +11,6 @@ import smtplib
 import ssl
 import sys
 from urllib.parse import quote
-import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD_URL = 'https://kennchow.github.io/cann-issue-dashboard/'
@@ -361,7 +360,14 @@ def evaluate_pr_sla(pr, snapshot_iso):
         start = ci_start if ci_dt and parse_iso(reply) >= ci_dt else pr.get('created_at')
         reply_hours = workday_hours(start, reply)
     qualified = eligible and (reply_hours <= 24 if reply_hours is not None else elapsed <= 24)
+    close_iso = pr.get('merged_at') or pr.get('closed_at')
+    # 与 src/pr.ts 一致：单条闭环耗时先按工作日天数保留 1 位小数，再求均值
+    close_work_days = (
+        round(workday_hours(pr.get('created_at'), close_iso) / 24.0, 1)
+        if pr.get('state') in ('merged', 'closed') and close_iso else None
+    )
     return {
+        'close_work_days': close_work_days,
         'ready': opened and ready,
         'blocked': opened and not ready,
         'eligible': eligible,
@@ -381,7 +387,19 @@ def _pr_summary(prs, details):
     qualified = sum(details[p['id']]['qualified'] for p in prs)
     closure_rate_val = round((merged + closed) / total * 100, 2) if total else None
     response_rate_val = round(qualified / eligible * 100, 2) if eligible else None
+    close_days = [details[p['id']]['close_work_days'] for p in prs
+                  if details[p['id']]['close_work_days'] is not None]
+    resp_hours = [details[p['id']]['reply_hours'] for p in prs
+                  if details[p['id']]['eligible'] and details[p['id']]['reply_hours'] is not None]
+    avg_close_days = round(sum(close_days) / len(close_days), 1) if close_days else None
+    avg_resp_hours = round(sum(resp_hours) / len(resp_hours), 1) if resp_hours else None
     return {
+        'unqualified': eligible - qualified,
+        'avg_close_days': avg_close_days,
+        'avg_close': f'{avg_close_days:.1f} 工作日' if avg_close_days is not None else '—',
+        'avg_resp_hours': avg_resp_hours,
+        'avg_resp': f'{avg_resp_hours:.1f} 工作日小时' if avg_resp_hours is not None else '—',
+        'linked': sum(bool(p.get('linked_issues')) for p in prs),
         'total': total,
         'open': sum(p.get('state') == 'open' for p in prs),
         'merged': merged,
@@ -487,24 +505,30 @@ PR_GROUPS = tuple((k, t, lim) for k, t, lim, *_ in PR_DIFF_GROUPS) + tuple(
 
 
 def _pr_overview_lines(ctx):
+    """一、全局概况中的 PR 核心指标：全部 PR（含内部与外部），口径与看板 PR数据总览一致。"""
     st = ctx['stats']
-    groups = ctx['groups']
     lines = [
         '统计范围与 PR数据总览一致，包含当前已采集的内部与外部贡献者 PR。',
         'SLA 口径：合并或关闭均计入闭环；非草稿、可合并且 CI 通过的 Open/Merged PR 纳入首响统计，'
         '从 CI 通过时间（缺失时从创建时间）起算，排除周末及中国大陆法定节假日、包含调休补班日。',
         f'PR 全量：共 {st["total"]} / 待处理 {st["open"]} / 已合并 {st["merged"]} / 未合并关闭 {st["closed"]}',
-        f'PR 闭环率：{st["closure_rate"]} | 24h 首响达标率：{st["response_rate"]}'
-        f'（达标 {st["qualified"]} / 有效样本 {st["eligible"]}）',
-        f'PR 待关注：待合并 {st["ready"]} / 合并受阻 {st["blocked"]} / '
-        f'未首响 {st["unreplied"]} / 首响超时 {st["timeout"]}',
-        f'本次 PR：新增 {len(groups["new"])} / 更新 {ctx["changed"]} / 新合并 {len(groups["merged"])} / '
-        f'新关闭 {len(groups["closed"])} / 新评论 {ctx["comments"]}',
+        f'PR 处理状态：合入就绪 {st["ready"]} / 合入阻塞 {st["blocked"]} / 已关联 Issue {st["linked"]}',
+        f'- PR 闭环率：{st["closure_rate"]}（{_rate_status_label(st["closure_rate_val"], 90)}，'
+        f'已闭环 {st["merged"] + st["closed"]} / 总数 {st["total"]}，平均闭环耗时 {st["avg_close"]}）',
+        f'- 首次响应达标率（CI 通过后 ≤24h 工作日）：{st["response_rate"]}'
+        f'（{_rate_status_label(st["response_rate_val"], 80)}，达标 {st["qualified"]} / 有效样本 {st["eligible"]}，'
+        f'平均首响耗时 {st["avg_resp"]}）',
+        f'- 首次响应未达标数：{st["unqualified"]} 项（CI 通过后首响 >24h 或未响应滞留 >24h 工作日）',
+        f'- 开启未响应超时 / 开启且未响应：{st["timeout"]} / {st["unreplied"]} 项（就绪且 CI 通过后未响应 >24h 工作日）',
     ]
-    if not ctx['has_baseline']:
-        lines.append('首次采集 PR，无历史 PR 基线；新增列表为首次发现。')
     lines.extend(ctx['warnings'])
     return lines
+
+
+def _pr_change_summary(ctx):
+    groups = ctx['groups']
+    return (f'本次 PR：新增 {len(groups["new"])} / 更新 {ctx["changed"]} / 新合并 {len(groups["merged"])} / '
+            f'新关闭 {len(groups["closed"])} / 新评论 {ctx["comments"]}')
 
 
 def _pr_state_label(pr):
@@ -560,10 +584,11 @@ def _render_pr_text(ctx):
                      f'合并受阻 {st["blocked"]} / 首响超时 {st["timeout"]}')
 
     sections['repos'] = lines
-    lines = []
+    lines = [_pr_change_summary(ctx)]
+    if not ctx['has_baseline']:
+        lines.append('首次采集 PR，无历史 PR 基线；新增列表为首次发现。')
     has_diff = any(ctx['groups'][key] for key, *_ in PR_DIFF_GROUPS)
     if has_diff:
-        lines += ['本次外部 PR 扫描变更明细：']
         for key, title, limit, *_ in PR_DIFF_GROUPS:
             items = ctx['groups'][key]
             if not items:
@@ -585,11 +610,12 @@ def _render_pr_text(ctx):
             if len(items) > limit:
                 lines.append(f'  …另有 {len(items) - limit} 项，详见 PR详情。')
 
-    sections['diff'] = lines or ['本次扫描周期内无外部 PR 新增、合并、关闭或新增评论。']
+    if not has_diff:
+        lines.append('本次扫描周期内无外部 PR 新增、合并、关闭或新增评论。')
+    sections['diff'] = lines
     lines = []
     has_risk = any(ctx['groups'][key] for key, *_ in PR_RISK_GROUPS)
     if has_risk:
-        lines += ['外部 PR 重点风险与待办清单：']
         for idx, (key, title, limit, *_) in enumerate(PR_RISK_GROUPS, 1):
             items = ctx['groups'][key]
             if not items:
@@ -612,13 +638,7 @@ def _render_pr_html(ctx):
     groups = ctx['groups']
     blocks = []
 
-    # 基线与采集警告横幅（与 Issue 顶部横幅视觉风格严格一致）
-    if not ctx['has_baseline']:
-        blocks.append(
-            '<div style="margin:0 0 12px 0;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;'
-            'border-left:4px solid #2563eb;border-radius:8px;color:#1e40af;font-size:12px;">'
-            '首次采集 PR，无历史 PR 基线；新增列表为首次发现。</div>'
-        )
+    # 采集警告横幅（与 Issue 顶部横幅视觉风格严格一致；基线提示放在四、变更明细中）
     if ctx['warnings']:
         warn_items = ''.join(f'<li style="margin:2px 0;">{html.escape(w)}</li>' for w in ctx['warnings'])
         blocks.append(
@@ -628,7 +648,7 @@ def _render_pr_html(ctx):
             f'<ul style="margin:4px 0 0 18px;padding:0;">{warn_items}</ul></div>'
         )
 
-    # 统计范围与 SLA 口径说明（与一、Issue SLA 口径说明一致）
+    # 统计范围与 SLA 口径说明（全部 PR，与看板 PR数据总览一致）
     blocks.append(
         '<div style="margin-bottom:12px;font-size:12px;color:#64748b;line-height:1.6;">'
         '<div>统计范围与 PR数据总览一致，包含当前已采集的内部与外部贡献者 PR。</div>'
@@ -637,50 +657,48 @@ def _render_pr_html(ctx):
         '</div>'
     )
 
-    # 4 列 PR SLA 核心指标卡片（与一、Issue 4 列 SLA 卡片严格对称）
+    # 4 列 PR SLA 核心指标卡片（与看板 PR数据总览「PR SLA 核心指标」一致）
     pr_closure_tone = _rate_tone(st['closure_rate_val'], 90)
     pr_resp_tone = _rate_tone(st['response_rate_val'], 80)
-    pr_ready_tone = 'green' if st['ready'] > 0 else 'slate'
-    pr_timeout_tone = 'red' if st['timeout'] > 0 else 'green'
+    pr_unqual_tone = 'red' if st['unqualified'] > 0 else 'green'
+    pr_timeout_tone = 'amber' if st['timeout'] > 0 else 'green'
+    card = ('<td width="25%" valign="top" style="padding:12px 14px;background:#f8fafc;'
+            'border:1px solid #e2e8f0;border-radius:8px;">')
 
     blocks.append(
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
         'style="border-collapse:separate;border-spacing:8px 0;margin:0 -8px 12px -8px;">'
         '<tr>'
-        f'<td width="25%" valign="top" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">'
+        f'{card}'
         f'<div style="font-size:12px;color:#475569;font-weight:600;">PR 闭环率 {_badge_html(_rate_status_label(st["closure_rate_val"], 90), pr_closure_tone)}</div>'
         f'<div style="margin:6px 0 4px 0;font-size:22px;font-weight:800;color:#0f172a;">{st["closure_rate"]}</div>'
-        f'<div style="font-size:11px;color:#64748b;">已合并 {st["merged"]} · 关闭 {st["closed"]}<br>总计 {st["total"]} 项 PR</div>'
-        f'</td>'
-        f'<td width="25%" valign="top" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">'
+        f'<div style="font-size:11px;color:#64748b;">已闭环 {st["merged"] + st["closed"]}（合入 {st["merged"]} / 关闭 {st["closed"]}）/ 总数 {st["total"]}<br>平均闭环：{st["avg_close"]}</div>'
+        '</td>'
+        f'{card}'
         f'<div style="font-size:12px;color:#475569;font-weight:600;">24h 首响达标率 {_badge_html(_rate_status_label(st["response_rate_val"], 80), pr_resp_tone)}</div>'
         f'<div style="margin:6px 0 4px 0;font-size:22px;font-weight:800;color:#0f172a;">{st["response_rate"]}</div>'
-        f'<div style="font-size:11px;color:#64748b;">达标 {st["qualified"]} / 有效样本 {st["eligible"]}<br>CI 通过起算 ≤24h 工作日</div>'
-        f'</td>'
-        f'<td width="25%" valign="top" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">'
-        f'<div style="font-size:12px;color:#475569;font-weight:600;">待合并 / 合并受阻 {_badge_html("Open 状态", pr_ready_tone)}</div>'
-        f'<div style="margin:6px 0 4px 0;font-size:22px;font-weight:800;color:#15803d;">{st["ready"]} <span style="font-size:14px;font-weight:600;color:#d97706;">/ 受阻 {st["blocked"]}</span></div>'
-        f'<div style="font-size:11px;color:#64748b;">就绪可合入 vs 草稿/冲突/CI未过<br><a href="{DASHBOARD_URL}#/prs" style="color:#2563eb;text-decoration:none;">查看 PR 队列 ↗</a></div>'
-        f'</td>'
-        f'<td width="25%" valign="top" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">'
-        f'<div style="font-size:12px;color:#475569;font-weight:600;">首响超时 / 未首响 {_badge_html("Open 待响应", pr_timeout_tone)}</div>'
-        f'<div style="margin:6px 0 4px 0;font-size:22px;font-weight:800;color:{"#dc2626" if st["timeout"] > 0 else "#15803d"};">{st["timeout"]} <span style="font-size:14px;font-weight:600;color:#64748b;">/ {st["unreplied"]}</span></div>'
-        f'<div style="font-size:11px;color:#64748b;">CI 通过后 &gt;24h 工作日未首响<br><a href="{DASHBOARD_URL}#/pr-dashboard" style="color:#2563eb;text-decoration:none;">查看 SLA 分析 ↗</a></div>'
-        f'</td>'
+        f'<div style="font-size:11px;color:#64748b;">达标 {st["qualified"]} / 有效样本 {st["eligible"]}<br>平均首响：{st["avg_resp"]}</div>'
+        '</td>'
+        f'{card}'
+        f'<div style="font-size:12px;color:#475569;font-weight:600;">首次响应未达标数 {_badge_html("就绪 & CI 通过", pr_unqual_tone)}</div>'
+        f'<div style="margin:6px 0 4px 0;font-size:22px;font-weight:800;color:{"#dc2626" if st["unqualified"] > 0 else "#15803d"};">{st["unqualified"]}</div>'
+        f'<div style="font-size:11px;color:#64748b;">CI 通过后首响 &gt;24h 或未响应滞留 &gt;24h<br><a href="{DASHBOARD_URL}#/prs?state=all&amp;first_resp=unqualified" style="color:#2563eb;text-decoration:none;">查看未达标明细 ↗</a></div>'
+        '</td>'
+        f'{card}'
+        f'<div style="font-size:12px;color:#475569;font-weight:600;">开启未响应超时 / 开启且未响应 {_badge_html("Open 待响应", pr_timeout_tone)}</div>'
+        f'<div style="margin:6px 0 4px 0;font-size:22px;font-weight:800;color:{"#d97706" if st["timeout"] > 0 else "#15803d"};">{st["timeout"]} <span style="font-size:14px;font-weight:600;color:#64748b;">/ {st["unreplied"]}</span></div>'
+        f'<div style="font-size:11px;color:#64748b;">就绪且 CI 通过后未响应 &gt;24h 工作日<br><a href="{DASHBOARD_URL}#/prs?state=open&amp;first_resp=open_timeout" style="color:#2563eb;text-decoration:none;">查看超时 PR ↗</a></div>'
+        '</td>'
         '</tr></table>'
     )
 
-    # 全量分布与本次变更摘要条（保留标准文案格式且与 Issue 指标条一致）
+    # 全量分布与处理状态条（与看板「PR 处理状态」一致）
     blocks.append(
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
         'style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-size:12px;color:#334155;">'
         '<tr>'
-        f'<td style="padding-bottom:5px;white-space:nowrap;font-weight:600;">PR 全量：共 {st["total"]} / 待处理 {st["open"]} / 已合并 {st["merged"]} / 未合并关闭 {st["closed"]}</td>'
-        f'<td align="right" style="padding-bottom:5px;white-space:nowrap;">PR 闭环率：{st["closure_rate"]} | 24h 首响达标率：{st["response_rate"]}（达标 {st["qualified"]} / 有效样本 {st["eligible"]}）</td>'
-        '</tr>'
-        '<tr>'
-        f'<td style="border-top:1px dashed #cbd5e1;padding-top:6px;white-space:nowrap;">PR 待关注：待合并 {st["ready"]} / 合并受阻 {st["blocked"]} / 未首响 {st["unreplied"]} / 首响超时 {st["timeout"]}</td>'
-        f'<td align="right" style="border-top:1px dashed #cbd5e1;padding-top:6px;white-space:nowrap;">本次 PR：新增 {len(groups["new"])} / 更新 {ctx["changed"]} / 新合并 {len(groups["merged"])} / 新关闭 {len(groups["closed"])} / 新评论 {ctx["comments"]}</td>'
+        f'<td style="white-space:nowrap;font-weight:600;">PR 全量：共 {st["total"]} / 待处理 {st["open"]} / 已合并 {st["merged"]} / 未合并关闭 {st["closed"]}</td>'
+        f'<td align="right" style="white-space:nowrap;">PR 处理状态：合入就绪 {st["ready"]} / 合入阻塞 {st["blocked"]} / 已关联 Issue {st["linked"]}</td>'
         '</tr>'
         '</table>'
     )
@@ -728,8 +746,7 @@ def _render_pr_html(ctx):
         '</tr>'
     )
     blocks.append(
-        '<div style="margin-top:16px;">'
-        '<div style="margin-bottom:8px;font-size:13px;font-weight:700;color:#334155;">PR 分仓多维统计明细</div>'
+        '<div>'
         '<table width="100%" cellpadding="0" cellspacing="0" '
         'style="border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">'
         '<tr style="background:#f1f5f9;color:#334155;text-align:left;white-space:nowrap;">'
@@ -750,7 +767,16 @@ def _render_pr_html(ctx):
     sections['repos'] = ''.join(blocks)
     blocks = []
 
-    # 2. 本次 PR 扫描变更明细（卡片式分组，与三、Issue 扫描变更明细一致）
+    # 2. 本次外部 PR 扫描变更明细（卡片式分组，与四（一）Issue 变更明细一致）
+    blocks.append(
+        f'<div style="font-size:12px;color:#475569;">{html.escape(_pr_change_summary(ctx))}</div>'
+    )
+    if not ctx['has_baseline']:
+        blocks.append(
+            '<div style="margin:10px 0 0 0;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;'
+            'border-left:4px solid #2563eb;border-radius:8px;color:#1e40af;font-size:12px;">'
+            '首次采集 PR，无历史 PR 基线；新增列表为首次发现。</div>'
+        )
     pr_diff_cards = []
     for key, title, limit, badge_tone, hdr_bg, hdr_border, hdr_fg in PR_DIFF_GROUPS:
         items = groups[key]
@@ -795,15 +821,13 @@ def _render_pr_html(ctx):
         )
     if pr_diff_cards:
         blocks.append(
-            '<div style="margin-top:18px;">'
-            '<div style="margin-bottom:4px;font-size:13px;font-weight:700;color:#334155;">本次 PR 扫描变更明细</div>'
-            f'{"".join(pr_diff_cards)}</div>'
+            f'<div>{"".join(pr_diff_cards)}</div>'
         )
     else:
         blocks.append(
             '<div style="margin-top:14px;padding:12px;background:#f8fafc;border:1px dashed #cbd5e1;'
             'border-radius:8px;color:#64748b;font-size:12px;text-align:center;">'
-            '本次扫描周期内无新增 PR、新合并、新关闭或新增评论。</div>'
+            '本次扫描周期内无外部 PR 新增、合并、关闭或新增评论。</div>'
         )
 
     sections['diff'] = ''.join(blocks)
@@ -879,9 +903,7 @@ def _render_pr_html(ctx):
         )
     if pr_risk_cards:
         blocks.append(
-            '<div style="margin-top:18px;">'
-            '<div style="margin-bottom:4px;font-size:13px;font-weight:700;color:#334155;">PR 重点风险与待办清单</div>'
-            f'{"".join(pr_risk_cards)}</div>'
+            f'<div>{"".join(pr_risk_cards)}</div>'
         )
 
     sections['risk'] = ''.join(blocks) or '<p>暂无外部 PR 重点跟踪项。</p>'
@@ -1015,7 +1037,6 @@ def _analyze(previous, current, outcome='success'):
     open_soon_resp_list.sort(key=lambda item_tuple: (item_tuple[2], item_tuple[0].get('id', '')))
     open_timeout_list.sort(key=lambda pair: (pair[0].get('created_at', ''), pair[0].get('id', '')), reverse=True)
 
-    # 内部维护人负载排行
     subject = '[CANN] Issue / PR数据通报'
     pr_report = _analyze_prs(previous, current)
 
@@ -1059,45 +1080,11 @@ def _rate_status_label(rate, target, warn=50.0):
     return f'未达标 <{int(warn)}%'
 
 
-def _owner_groups(rows):
-    groups = {}
-    for item in rows:
-        if item.get('state') != 'open':
-            continue
-        names = {_clean_text(p.get('login'), '') for p in item.get('assignees') or []
-                 if isinstance(p, dict) and p.get('login')}
-        if item.get('workload_owner') and item['workload_owner'] != '未分配':
-            names.add(_clean_text(item['workload_owner']))
-        for name in names or {'未分配'}:
-            groups.setdefault(name, []).append(item)
-    return sorted(groups.items(), key=lambda pair: (-len(pair[1]), pair[0]))
-
-
-def _owner_list_text(rows, kind):
-    lines = ['按当前指派及工作量责任人列出全部待处理条目；多人负责的条目分别列入各人名下。']
-    for name, items in _owner_groups(rows):
-        lines.append(f'{name}：待处理 {len(items)}')
-        for item in sorted(items, key=lambda item: item['id']):
-            lines.append(f'- {item["id"]} {_clean_text(item.get("title"))} | {item["url"]}')
-    return lines if len(lines) > 1 else [f'暂无待处理 {kind}。']
-
-
 def _section_html(title, body):
     return ('<div style="margin-top:24px;">'
             '<div style="margin-bottom:10px;font-size:15px;font-weight:700;color:#0f172a;'
             'border-left:4px solid #2563eb;padding-left:10px;">'
             f'{html.escape(title)}</div>{body}</div>')
-
-
-def _owner_list_html(rows, kind):
-    blocks = ['<p style="font-size:12px;color:#64748b;">按当前指派及工作量责任人列出全部待处理条目；多人负责的条目分别列入各人名下。</p>']
-    for name, items in _owner_groups(rows):
-        blocks.append(f'<div><strong>{html.escape(name)}：待处理 {len(items)}</strong><ul>')
-        for item in sorted(items, key=lambda item: item['id']):
-            label = html.escape(f'{item["id"]} {_clean_text(item.get("title"))}')
-            blocks.append(f'<li><a href="{html.escape(item["url"], quote=True)}">{label}</a></li>')
-        blocks.append('</ul></div>')
-    return ''.join(blocks) if len(blocks) > 1 else f'<p>暂无待处理 {kind}。</p>'
 
 
 def render(previous, current, outcome='success'):
@@ -1119,6 +1106,7 @@ def render(previous, current, outcome='success'):
         f'{ctx["at"]}（北京时间）',
         '',
         '【一、全局概况与核心指标】',
+        '（一）Issue 核心指标',
         summary('全量', {'issues': ctx['rows'], 'stats': counts}, ctx['snapshot_iso']),
         (
             f'待关注：超期 {counts["overdue"]} / 临期 {counts["due_soon"]} / '
@@ -1145,6 +1133,7 @@ def render(previous, current, outcome='success'):
             f'（Open 未响应且停留 >24h 工作日）'
         ),
         '',
+        '（二）PR 核心指标（全部 PR，与 PR数据总览一致）',
         *_render_pr_text(ctx['pr_report'])['overview'],
         '',
         '【二、各仓Issue多维统计明细】',
@@ -1273,9 +1262,11 @@ def render(previous, current, outcome='success'):
 
     else:
         lines.append('暂无 Issue 重点跟踪项。')
-    lines += ['', '【六、各责任人名下Issue清单】', *_owner_list_text(ctx['rows'], 'Issue'),
-              '', '【七、外部重点跟踪清单】', *pr_sections['risk'],
-              '', '【八、各责任人名下PR清单】', *_owner_list_text(external_pr['rows'], '外部 PR')]
+    lines += [
+        '',
+        '【六、外部重点跟踪清单】',
+        *pr_sections['risk'],
+    ]
 
     errors = ctx['errors']
     if outcome != 'success' or errors:
@@ -1670,7 +1661,6 @@ def render_html(previous, current, outcome='success'):
             f'{"".join(rows_html)}</table></div>'
         )
 
-    owners_html_block = _section_html('六、各责任人名下Issue清单', _owner_list_html(ctx['rows'], 'Issue'))
     risk_block_html = _section_html('五、Issue重点跟踪清单', ''.join(risk_sections_html) or '<p>暂无 Issue 重点跟踪项。</p>')
     external_pr = ctx['external_pr_report']
     pr_sections = _render_pr_html(external_pr)
@@ -1743,6 +1733,7 @@ def render_html(previous, current, outcome='success'):
         <div style="margin-bottom:10px;font-size:15px;font-weight:700;color:#0f172a;border-left:4px solid #2563eb;padding-left:10px;">
           一、全局概况与核心指标
         </div>
+        <div style="margin:14px 0 8px 0;font-size:13px;font-weight:700;color:#334155;">（一）Issue 核心指标</div>
         <div style="margin-bottom:12px;font-size:12px;color:#64748b;">
           统计口径：剔除中国大陆法定节假日及周末，首次响应排除自处理（<strong>{sla["excluded_self_processed"]}</strong> 项）及里程碑（<strong>{sla["excluded_milestone"]}</strong> 项）Issue。
         </div>
@@ -1788,6 +1779,7 @@ def render_html(previous, current, outcome='success'):
           </tr>
         </table>
 
+        <div style="margin:18px 0 8px 0;font-size:13px;font-weight:700;color:#334155;">（二）PR 核心指标（全部 PR，与 PR数据总览一致）</div>
         {pr_overview}
 
         <!-- 二、分仓多维明细表 -->
@@ -1819,19 +1811,17 @@ def render_html(previous, current, outcome='success'):
           <div style="margin-bottom:8px;font-size:15px;font-weight:700;color:#0f172a;border-left:4px solid #2563eb;padding-left:10px;">
             四、本次扫描Issue和外部PR变更明细
           </div>
-          <h4>（一）Issue 变更明细</h4>
+          <div style="margin:4px 0 8px 0;font-size:13px;font-weight:700;color:#334155;">（一）Issue 变更明细</div>
           <div style="font-size:12px;color:#475569;">
             本次汇总：新增 Issue <strong>{len(ctx["new_issues"])}</strong> / 更新 <strong>{ctx["changed"]}</strong> / 新闭环 <strong>{len(ctx["newly_closed"])}</strong> / 指派变更 <strong>{len(ctx["assignee_changed"])}</strong> / 新评论 <strong>{ctx["new_comments_total"]}</strong> / 新 AI 报告 <strong>{ctx["new_reports_total"]}</strong>
           </div>
           {"".join(diff_blocks)}
-          <h4>（二）外部PR 变更明细</h4>
+          <div style="margin:20px 0 8px 0;font-size:13px;font-weight:700;color:#334155;">（二）外部PR 变更明细</div>
           {pr_sections["diff"]}
         </div>
 
         {risk_block_html}
-        {owners_html_block}
-        {_section_html('七、外部重点跟踪清单', pr_sections['risk'])}
-        {_section_html('八、各责任人名下PR清单', _owner_list_html(external_pr['rows'], '外部 PR'))}
+        {_section_html('六、外部重点跟踪清单', pr_sections['risk'])}
       </td>
     </tr>
 

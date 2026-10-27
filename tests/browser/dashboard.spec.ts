@@ -118,15 +118,20 @@ test("workload cards label outsiders and drill down to unique ownership", async 
   await expect(
     page.locator(".owner").filter({ hasText: "外部开发者" }).first(),
   ).toBeVisible();
-  const data = await (await page.request.get("/data/dashboard.json")).json();
-  const target = data.owners.find((o: any) =>
-    o.issues.includes("cann/metadef#125"),
+  const data: Data = await (await page.request.get("/data/dashboard.json")).json();
+  // Synced issues can close or change owners; select an active internal owner.
+  const target = data.owners.find(
+    (owner) => owner.role === "internal" && owner.stats.open > 0,
   );
-  expect(target).toBeTruthy();
+  if (!target) throw new Error("Snapshot has no active internal owner");
+  const issue = Object.values(data.repositories)
+    .flatMap((repo) => repo.issues)
+    .find((issue) => target.issues.includes(issue.id) && issue.state === "open");
+  if (!issue) throw new Error("Owner references no open issue in the snapshot");
   expect(target.role).not.toBe("external");
   const card = page
     .locator(".owner")
-    .filter({ has: page.locator("strong", { hasText: target.person.login }) });
+    .filter({ has: page.getByText(target.person.login, { exact: true }) });
   await card.click();
   await expect(page.getByLabel("内部维护人", { exact: true })).toHaveValue(
     target.person.login,
@@ -136,8 +141,12 @@ test("workload cards label outsiders and drill down to unique ownership", async 
       name: `导出筛选结果 HTML（${target.stats.open} 项）`,
     }),
   ).toBeVisible();
-  await page.getByLabel("搜索标题关键词 / 编号 / 提出人 / 责任人").fill("#125");
+  await page.getByLabel("仓库", { exact: true }).selectOption(issue.repo);
+  await page
+    .getByLabel("搜索标题关键词 / 编号 / 提出人 / 责任人")
+    .fill(`#${issue.number} `);
   await expect(page.locator("table.issues tbody tr")).toHaveCount(1);
+  await expect(page.locator("table.issues tbody .title")).toHaveText(issue.title);
 });
 
 test("owner role filtering persists and updates counts and drilldown", async ({

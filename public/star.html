@@ -31,7 +31,7 @@
       main { width: 100%; max-width: 480px; }
       h1 { font-size: 22px; margin: 8px 0 4px; }
       .sub { color: var(--muted); margin: 0 0 20px; }
-      .repos { list-style: none; padding: 0; margin: 0 0 20px; display: grid; gap: 10px; }
+      .repos { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 10px; }
       .repo {
         background: var(--card);
         border: 1px solid var(--line);
@@ -71,10 +71,10 @@
       <h1>⭐ 一键Star CANN相关仓库</h1>
       <p class="sub">登录 GitCode 并授权后，自动为以下 5 个仓库点 Star，感谢支持！</p>
 
-      <ul class="repos" id="repos"></ul>
-
       <button class="primary" id="go" type="button">GitCode 登录授权并一键 Star</button>
       <div class="msg" id="msg" role="status" aria-live="polite"></div>
+
+      <ul class="repos" id="repos"></ul>
 
       <p class="hint">
         授权只用于本次 Star 操作，页面不会保存你的令牌。若授权不可用，可点击上方仓库名进入仓库页手动 Star。

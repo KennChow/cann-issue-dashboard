@@ -69,7 +69,7 @@
   <body>
     <main>
       <h1>⭐ 一键Star CANN相关仓库</h1>
-      <p class="sub">登录 GitCode 并授权后，自动为以下 9 个仓库点 Star，感谢支持！</p>
+      <p class="sub">登录 GitCode 并授权后，自动为以下 5 个仓库点 Star，感谢支持！</p>
 
       <ul class="repos" id="repos"></ul>
 
@@ -86,21 +86,16 @@
       // GitCode OAuth 应用的 Client ID（公开信息，可以写在页面里）。
       const CLIENT_ID = "19f181949c0e4e6595af26590bd4ce2d";
       // 换取 access_token 的后端地址（阿里云函数计算 cn-hangzhou/cann-star-oauth，持有 client_secret，源码见 deploy/star-oauth/index.js）。
-      // 置空则关闭一键 Star（按钮禁用，提示手动 Star）。恢复时填回：
-      // const TOKEN_ENDPOINT = "https://cann-star-oauth-wdvxfiqvlv.cn-hangzhou.fcapp.run";
-      const TOKEN_ENDPOINT = "";
+      // 置空则关闭一键 Star（按钮禁用，提示手动 Star）。
+      const TOKEN_ENDPOINT = "https://cann-star-oauth-wdvxfiqvlv.cn-hangzhou.fcapp.run";
       // GitCode OAuth 权限范围；留空则使用应用默认权限。
       const SCOPE = "";
       const REPOS = [
-        { path: "cann/cannbot-skills", desc: "CANNBot Skills 模块" },
-        { path: "cann/ge", desc: "Graph Engine" },
-        { path: "cann/tensorflow", desc: "TensorFlow 适配" },
-        { path: "cann/metadef", desc: "元数据定义" },
-        { path: "cann/triton-inference-server-ge-backend", desc: "Triton GE Backend" },
-        { path: "cann/hixl", desc: "昇腾单边通信库" },
-        { path: "cann/torchtitan-npu", desc: "TorchTitan 昇腾扩展" },
-        { path: "cann/graph-autofusion", desc: "图自动融合加速组件" },
         { path: "Ascend/torchair", desc: "PyTorch 图模式推理" },
+        { path: "cann/torchtitan-npu", desc: "TorchTitan 昇腾扩展" },
+        { path: "cann/hixl", desc: "昇腾单边通信库" },
+        { path: "cann/ge", desc: "Graph Engine" },
+        { path: "cann/graph-autofusion", desc: "图自动融合加速组件" },
       ];
       // ================
 
